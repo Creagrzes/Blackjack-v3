@@ -32,6 +32,9 @@ let clockOffset = 0;   // serwer − telefon
 let sel = null;        // wybrane moje miejsce
 let drawerOpen = false;
 let barMore = false;
+let betTarget = "bet";      // na co idą żetony: zakład główny, Pary (pp) albo 21+3 (t3)
+let fxResultRound = null;   // runda, dla której już pokazano zgarnianie/wypłatę żetonów
+let fxSideRound = null;     // runda, dla której już pokazano rozliczenie zakładów pobocznych
 let holeState = "";       // czy zakryta karta krupiera była jeszcze zakryta
 let seenCards = null;       // karty już pokazane (null = pierwszy stan po wejściu, bez animacji)
 let newCards = [];          // karty, które pojawiły się w tym rysowaniu: [klucz, kolejność]
@@ -236,6 +239,7 @@ function render() {
   renderDrawer(mine);
   animateDeal();
   updateTimers();
+  chipEffects();
 }
 
 // Karty wylatują po kolei z buta krupiera i odwracają się w locie.
@@ -317,12 +321,26 @@ function seatHtml(s, i, mine) {
   }).join("");
 
   // Stawka: w trakcie rundy suma rąk, przy obstawianiu bieżący zakład.
-  const staked = s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : s.bet;
-  const drop = staked > (lastStake[i] || 0);
-  lastStake[i] = staked;
-  const spot = staked > 0
-    ? '<div class="spot has"><div class="stack' + (drop ? " drop" : "") + '">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + fmt(staked) + "</span></div>"
-    : '<div class="spot num">' + (i + 1) + "</div>";
+  // Po rundzie żetony zgarnia/wypłaca animacja, więc pole jest już puste.
+  const staked = S.phase === "result" && s.inRound ? 0 : s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : s.bet;
+  const total = staked + s.pp + s.t3;
+  const drop = total > (lastStake[i] || 0);
+  lastStake[i] = total;
+  const canBet = isMine && isBetting();
+  const onCls = (k) => (canBet && i === sel && betTarget === k ? " on" : "");
+  const spotTag = (k, cls, inner) => canBet
+    ? '<button class="' + cls + onCls(k) + '" data-spot="' + k + '" data-target="' + k + '" data-seat="' + i + '">' + inner + "</button>"
+    : '<div class="' + cls + '" data-spot="' + k + '">' + inner + "</div>";
+  const main = staked > 0
+    ? spotTag("bet", "spot has", '<div class="stack' + (drop ? " drop" : "") + '">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + fmt(staked) + "</span>")
+    : spotTag("bet", "spot num", String(i + 1));
+  const side = (k, name) => {
+    const res = s.side && s.side.find((x) => x.k === k);
+    if (s[k] > 0) return spotTag(k, "sspot has", chipFace(stackChip(s[k])) + '<span class="amount">' + fmt(s[k]) + "</span>");
+    if (res && res.mult) return spotTag(k, "sspot win", "<b>" + res.mult + ":1</b>");
+    return spotTag(k, "sspot" + (res ? " lost" : ""), '<span class="sl">' + name + "</span>");
+  };
+  const spot = '<div class="spots">' + side("pp", "PARY") + main + side("t3", "21+3") + "</div>";
 
   const tags = [];
   if (s.away) tags.push('<span class="off">offline</span>');
@@ -332,7 +350,7 @@ function seatHtml(s, i, mine) {
   if (s.ins > 0) tags.push("ubezp. " + fmt(s.ins));
 
   const plateCls = "plate" + (isMine ? " mine" : "") + (isMine && i === sel ? " sel" : "") + (s.away ? " away" : "");
-  return '<div class="seat' + (isTurn ? " turn" : "") + '" style="' + pos + '">' +
+  return '<div class="seat' + (isTurn ? " turn" : "") + '" data-i="' + i + '" style="' + pos + '">' +
     (hands ? '<div class="hands' + (multi ? " multi" : "") + '">' + hands + "</div>" : "") +
     spot +
     '<div class="' + plateCls + '"' + (isMine ? ' data-select="' + i + '"' : "") + ">" +
@@ -382,18 +400,27 @@ function renderBarInner(el, mine, myTurn) {
 
   if (isBetting()) {
     const seat = S.seats[sel];
-    const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet, 0);
+    const stake = seat.bet + seat.pp + seat.t3;
+    const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet + S.seats[i].pp + S.seats[i].t3, 0);
+    const noMain = betTarget !== "bet" && seat.bet === 0;
     const withBet = mine.filter((i) => S.seats[i].bet > 0 && !S.seats[i].sitOut);
     const allReady = withBet.length > 0 && withBet.every((i) => S.seats[i].ready);
-    const chips = BAR_CHIPS.concat(barMore ? BAR_MORE : []).map((v) => chipBtn(v, betsMine + v > me.bankroll, "data-bet")).join("") +
+    const chips = BAR_CHIPS.concat(barMore ? BAR_MORE : []).map((v) => chipBtn(v, noMain || betsMine + v > me.bankroll, "data-bet")).join("") +
       '<button class="chip more' + (barMore ? " on" : "") + '" data-more aria-label="Więcej żetonów">' + (barMore ? "−" : "+") + "</button>";
     let readyLabel = "Postaw", readyOn = false;
     if (withBet.length && allReady) readyLabel = "Czekam…";
     else if (withBet.length) { readyLabel = "Gotowe"; readyOn = S.phase === "betting"; }
+    const tabs = [["bet", (mine.length > 1 ? "M" + (sel + 1) + " · " : "") + "Zakład"], ["pp", "Pary"], ["t3", "21+3"]].map(([k, label]) =>
+      '<button class="tgt' + (betTarget === k ? " on" : "") + '" data-target="' + k + '" data-seat="' + sel + '"><small>' + label + "</small><b>" + fmt(seat[k]) + "</b></button>"
+    ).join("");
+    const canRebet = seat.last > 0 && stake < seat.last && betsMine - stake + seat.last <= me.bankroll;
+    const canDouble = stake > 0 && betsMine + stake <= me.bankroll;
     el.innerHTML =
-      '<div class="bet-box"><small>' + (mine.length > 1 ? "Miejsce " + (sel + 1) : "Zakład") + "</small><b>" + fmt(seat.bet) + "</b></div>" +
+      '<div class="tgts">' + tabs + "</div>" +
       '<div class="chips-row">' + chips + "</div>" +
-      '<button class="btn outline" data-clear="' + sel + '"' + (seat.bet > 0 ? "" : " disabled") + ">Wyczyść</button>" +
+      '<button class="btn outline" data-clear="' + sel + '"' + (stake > 0 ? "" : " disabled") + ">Wyczyść</button>" +
+      '<button class="btn outline" data-rebet="' + sel + '"' + (canRebet ? "" : " disabled") + ">↺ Powtórz</button>" +
+      '<button class="btn outline" data-double="' + sel + '"' + (canDouble ? "" : " disabled") + ">×2</button>" +
       '<button class="btn outline" data-sitout="' + sel + '">' + (seat.sitOut ? "Wracam" : "Pauza") + "</button>" +
       '<button class="btn gold" data-ready' + (readyOn ? "" : " disabled") + ">" + readyLabel + "</button>";
     return;
@@ -426,7 +453,7 @@ function renderDrawer(mine) {
   $("drawerTab").classList.toggle("hidden", !show || drawerOpen);
   $("drawer").classList.toggle("hidden", !show || !drawerOpen);
   if (!show) return;
-  const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet, 0);
+  const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet + S.seats[i].pp + S.seats[i].t3, 0);
   $("drawer").innerHTML = '<button class="drawer-close" data-drawer="0">◂ Zwiń</button>' +
     CHIPS.slice().reverse().map((v) => chipBtn(v, betsMine + v > me.bankroll, "data-bet")).join("");
 }
@@ -469,7 +496,14 @@ document.addEventListener("click", (e) => {
   const d = b.dataset;
   if (d.sit != null) send({ type: "sit", seat: +d.sit });
   else if (d.leave != null) send({ type: "leave", seat: +d.leave });
-  else if (d.bet != null) send({ type: "bet", seat: sel, amount: +d.bet });
+  else if (d.bet != null) {
+    const target = document.querySelector('.seat[data-i="' + sel + '"] [data-spot="' + betTarget + '"]');
+    if (target) flyBetChip(+d.bet, b, target);
+    send({ type: "bet", seat: sel, amount: +d.bet, kind: betTarget });
+  }
+  else if (d.rebet != null) send({ type: "rebet", seat: +d.rebet });
+  else if (d.double != null) send({ type: "doubleBet", seat: +d.double });
+  else if (d.target != null) { sel = +d.seat; betTarget = d.target; render(); }
   else if (d.clear != null) send({ type: "clearBet", seat: +d.clear });
   else if (d.ready != null) send({ type: "ready" });
   else if (d.sitout != null) send({ type: "sitOut", seat: +d.sitout });
@@ -529,6 +563,159 @@ function openModal(id) {
 }
 function closeModal(id) {
   $(id).classList.add("hidden");
+}
+
+// ---------------------------------------------------------------------------
+// Animacje żetonów: obstawianie, zgarnianie przez krupiera i wypłaty
+// ---------------------------------------------------------------------------
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const em = () => parseFloat($("app").style.fontSize) || 16;
+
+// Środek elementu w układzie gry (na pionowym telefonie gra jest obrócona o 90°).
+function localCenter(el) {
+  const r = el.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  if ($("app").classList.contains("rotated")) return { x: cy, y: window.innerWidth - cx };
+  return { x: cx, y: cy };
+}
+
+function fxChip(amount, at, label) {
+  const el = document.createElement("div");
+  el.className = "fx-chip";
+  el.innerHTML = chipFace(stackChip(amount)).repeat(2) + (label ? '<span class="amount">' + label + "</span>" : "");
+  el.style.left = at.x + "px";
+  el.style.top = at.y + "px";
+  el._at = at;
+  $("fx").appendChild(el);
+  return el;
+}
+
+// Przesuwa żeton z jego bieżącego miejsca do punktu „to”. fade – znika na końcu lotu.
+function moveChip(el, to, ms, fade) {
+  const from = el._at;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const anim = el.animate([
+    { transform: "translate(-50%,-50%)", opacity: 1 },
+    { transform: "translate(calc(-50% + " + dx * 0.55 + "px), calc(-50% + " + (dy * 0.55 - em() * 0.8) + "px)) scale(1.12)", opacity: 1, offset: 0.55 },
+    { transform: "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))", opacity: fade ? 0 : 1 }
+  ], { duration: ms, easing: "cubic-bezier(.3,.7,.4,1)", fill: "forwards" });
+  return anim.finished.then(() => {
+    if (fade) el.remove();
+    else {
+      anim.cancel();
+      el._at = to;
+      el.style.left = to.x + "px";
+      el.style.top = to.y + "px";
+    }
+  });
+}
+
+function fxLabel(text, at, cls) {
+  const el = document.createElement("div");
+  el.className = "fx-label " + (cls || "");
+  el.textContent = text;
+  el.style.left = at.x + "px";
+  el.style.top = at.y + "px";
+  $("fx").appendChild(el);
+  setTimeout(() => el.remove(), 1700);
+}
+
+function pulse(el) {
+  if (!el) return;
+  el.classList.remove("paid");
+  void el.offsetWidth;
+  el.classList.add("paid");
+}
+
+function flyBetChip(amount, fromEl, toEl) {
+  const c = fxChip(amount, localCenter(fromEl));
+  moveChip(c, localCenter(toEl), 380, true);
+}
+
+function dealerPoint() {
+  const cards = $("dealerCards");
+  return localCenter(cards.children.length ? cards : $("dealerTotal"));
+}
+
+const seatEl = (i, sel) => document.querySelector('.seat[data-i="' + i + '"] ' + sel);
+
+// Wygrana: wypłata leci od krupiera obok zakładu, potem oba stosy jadą do salda gracza.
+async function payout(i, spotEl, stake, profit) {
+  const spot = localCenter(spotEl);
+  const base = fxChip(stake, spot);
+  let pay = null;
+  if (profit > 0) {
+    await sleep(200);
+    const next = { x: spot.x + em() * 1.1, y: spot.y - em() * 0.2 };
+    pay = fxChip(profit, dealerPoint());
+    await moveChip(pay, next, 650, false);
+    fxLabel("+" + fmt(profit), { x: spot.x, y: spot.y - em() * 1.6 }, "win");
+  }
+  await sleep(900);
+  const plate = seatEl(i, ".plate");
+  if (!plate) { base.remove(); if (pay) pay.remove(); return; }
+  const dest = localCenter(plate);
+  const moves = [moveChip(base, dest, 520, true)];
+  if (pay) moves.push(moveChip(pay, dest, 560, true));
+  await Promise.all(moves);
+  pulse(plate);
+}
+
+// Przegrana: krupier zgarnia żetony.
+function collect(spotEl, amount) {
+  const c = fxChip(amount, localCenter(spotEl));
+  return moveChip(c, dealerPoint(), 600, true);
+}
+
+async function resultFx() {
+  const seats = S.seats.map((s, i) => [s, i]).filter(([s]) => s && s.inRound && s.hands.length);
+  for (const [n, [s, i]] of seats.entries()) {
+    let lost = 0, back = 0, profit = 0;
+    for (const h of s.hands) {
+      if (h.result === "win") { back += h.bet; profit += h.label.startsWith("BLACKJACK") ? Math.floor(h.bet * 1.5) : h.bet; }
+      else if (h.result === "push") back += h.bet;
+      else lost += h.bet;
+    }
+    setTimeout(() => {
+      const spotEl = seatEl(i, '[data-spot="bet"]');
+      if (!spotEl) return;
+      if (lost) collect(spotEl, lost);
+      if (back) payout(i, spotEl, back, profit);
+    }, n * 280);
+  }
+}
+
+async function sideFx() {
+  await sleep(Math.max(0, dealBusyUntil - Date.now()) + 250);
+  S.seats.forEach((s, i) => {
+    if (!s || !s.side) return;
+    for (const r of s.side) {
+      const spotEl = seatEl(i, '[data-spot="' + r.k + '"]');
+      if (!spotEl) continue;
+      if (r.mult) {
+        fxLabel(r.label + " " + r.mult + ":1", { x: localCenter(spotEl).x, y: localCenter(spotEl).y - em() * 2.4 }, "win big");
+        payout(i, spotEl, r.bet, r.bet * r.mult);
+      } else collect(spotEl, r.bet);
+    }
+  });
+}
+
+function chipEffects() {
+  // Po wejściu do gry nie odtwarzamy tego, co już się wydarzyło.
+  if (fxResultRound === null) {
+    fxResultRound = S.phase === "result" ? S.roundNo : -1;
+    fxSideRound = S.roundNo;
+    return;
+  }
+  if (S.phase === "result" && fxResultRound !== S.roundNo) {
+    fxResultRound = S.roundNo;
+    resultFx();
+  }
+  if (fxSideRound !== S.roundNo && S.seats.some((s) => s && s.side)) {
+    fxSideRound = S.roundNo;
+    sideFx();
+  }
 }
 
 function renderStats(st) {

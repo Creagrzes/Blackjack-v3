@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { newShoe, evaluate, rankValue } from "./game.js";
+import { newShoe, evaluate, rankValue, perfectPairs, twentyOnePlusThree } from "./game.js";
 
 const SEATS = 6;
 const MAX_HANDS_PER_SEAT = 4;
@@ -22,6 +22,9 @@ const LOG_SIZE = 60;
 const ERRLOG_SIZE = 200;
 const RECENT_SIZE = 40;
 const ROUND_PHASES = ["insurance", "playing", "dealer"];
+// Zakład główny i zakłady poboczne: Perfect Pairs (pp) i 21+3 (t3).
+const BET_KINDS = ["bet", "pp", "t3"];
+const SIDE_NAMES = { pp: "Pary", t3: "21+3" };
 
 function freshTable() {
   return {
@@ -44,7 +47,12 @@ function newSeat(pid) {
   return {
     pid,
     bet: 0,
+    pp: 0,
+    t3: 0,
     lastBet: 0,
+    lastPp: 0,
+    lastT3: 0,
+    side: null,
     ready: false,
     sitOut: false,
     hands: [],
@@ -61,6 +69,17 @@ function newHand(cards, bet) {
 
 function fmt(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+// Stawka miejsca razem z zakładami pobocznymi (starsze zapisy nie mają pól pp/t3).
+function stakeOf(s) {
+  return s.bet + (s.pp || 0) + (s.t3 || 0);
+}
+
+function clearBets(s) {
+  s.bet = 0;
+  s.pp = 0;
+  s.t3 = 0;
 }
 
 function signed(n) {
@@ -403,8 +422,10 @@ export class Table extends DurableObject {
         if (!seat || (t.phase !== "idle" && t.phase !== "betting")) return;
         const amount = Number(msg.amount);
         if (!CHIPS.includes(amount)) return;
+        const kind = BET_KINDS.includes(msg.kind) ? msg.kind : "bet";
+        if (kind !== "bet" && seat.bet === 0) return this.error(ws, "Najpierw postaw zakład główny.");
         if (this.betsOf(pid) + amount > p.bankroll) return this.error(ws, "Za mało żetonów na taki zakład.");
-        seat.bet += amount;
+        seat[kind] = (seat[kind] || 0) + amount;
         seat.ready = false;
         seat.sitOut = false;
         seat.timeouts = 0;
@@ -413,8 +434,29 @@ export class Table extends DurableObject {
       }
       case "clearBet": {
         if (!seat || (t.phase !== "idle" && t.phase !== "betting")) return;
-        seat.bet = 0;
+        clearBets(seat);
         seat.ready = false;
+        break;
+      }
+      case "rebet": {
+        // Zakład z poprzedniej rundy razem z zakładami pobocznymi.
+        if (!seat || (t.phase !== "idle" && t.phase !== "betting")) return;
+        const last = { bet: seat.lastBet || 0, pp: seat.lastPp || 0, t3: seat.lastT3 || 0 };
+        const need = last.bet + last.pp + last.t3;
+        if (last.bet === 0) return;
+        if (this.betsOf(pid) - stakeOf(seat) + need > p.bankroll) return this.error(ws, "Za mało żetonów, żeby powtórzyć zakład.");
+        Object.assign(seat, last, { ready: false, sitOut: false, timeouts: 0 });
+        if (t.phase === "idle") this.startBetting();
+        break;
+      }
+      case "doubleBet": {
+        if (!seat || (t.phase !== "idle" && t.phase !== "betting")) return;
+        const cur = stakeOf(seat);
+        if (cur === 0) return;
+        if (this.betsOf(pid) + cur > p.bankroll) return this.error(ws, "Za mało żetonów, żeby podwoić zakład.");
+        for (const k of BET_KINDS) seat[k] = (seat[k] || 0) * 2;
+        seat.ready = false;
+        seat.timeouts = 0;
         break;
       }
       case "sitOut": {
@@ -422,7 +464,7 @@ export class Table extends DurableObject {
         seat.sitOut = !seat.sitOut;
         seat.timeouts = 0;
         if (seat.sitOut && (t.phase === "idle" || t.phase === "betting")) {
-          seat.bet = 0;
+          clearBets(seat);
           seat.ready = false;
         }
         if (t.phase === "betting" && this.allReady()) this.dealRound();
@@ -551,11 +593,13 @@ export class Table extends DurableObject {
       s.hands = [];
       s.ins = null;
       s.ready = false;
-      if (s.bet > 0 && !s.sitOut && !s.leaving && s.bet <= left[s.pid] && this.isConnected(s.pid)) {
+      s.side = null;
+      const stake = stakeOf(s);
+      if (s.bet > 0 && !s.sitOut && !s.leaving && stake <= left[s.pid] && this.isConnected(s.pid)) {
         included.push(i);
-        left[s.pid] -= s.bet;
+        left[s.pid] -= stake;
       } else {
-        s.bet = 0;
+        clearBets(s);
       }
     });
     t.dealer = [];
@@ -579,8 +623,10 @@ export class Table extends DurableObject {
       const s = t.seats[si];
       const p = this.players.get(s.pid);
       if (!(s.pid in t.roundStart)) t.roundStart[s.pid] = p.bankroll;
-      p.bankroll -= s.bet;
+      p.bankroll -= stakeOf(s);
       s.lastBet = s.bet;
+      s.lastPp = s.pp || 0;
+      s.lastT3 = s.t3 || 0;
       this.savePlayer(p);
     }
     const first = {}, second = {};
@@ -596,7 +642,36 @@ export class Table extends DurableObject {
     t.dealer = [up, hole];
     t.included = included;
     t.roundNo++;
+    this.settleSideBets();
     this.resolvePreplay();
+  }
+
+  // Zakłady poboczne rozliczamy od razu po rozdaniu – liczą się tylko dwie pierwsze karty
+  // gracza i odkryta karta krupiera.
+  settleSideBets() {
+    const t = this.t;
+    const wins = [];
+    for (const si of t.included) {
+      const s = t.seats[si];
+      const p = this.players.get(s.pid);
+      const [a, b] = s.hands[0].cards;
+      const res = [];
+      for (const k of ["pp", "t3"]) {
+        const amt = s[k] || 0;
+        if (!amt) continue;
+        const hit = k === "pp" ? perfectPairs(a, b) : twentyOnePlusThree([a, b, t.dealer[0]]);
+        if (hit) {
+          p.bankroll += amt * (hit.mult + 1);
+          wins.push(p.name + ": " + hit.label + " " + hit.mult + ":1");
+        }
+        res.push({ k, bet: amt, mult: hit ? hit.mult : 0, label: hit ? hit.label : SIDE_NAMES[k] });
+      }
+      s.pp = 0;
+      s.t3 = 0;
+      s.side = res.length ? res : null;
+      if (res.length) this.savePlayer(p);
+    }
+    if (wins.length) t.message = (t.message ? t.message + " " : "") + wins.join(" · ") + "!";
   }
 
   resolvePreplay() {
@@ -915,6 +990,7 @@ export class Table extends DurableObject {
       s.hands = [];
       s.ins = null;
       s.ready = false;
+      s.side = null;
       // Ten sam zakład co w poprzedniej rundzie, o ile starczy żetonów.
       s.bet = played && !s.sitOut ? Math.min(s.lastBet, left[s.pid]) : 0;
       if (s.bet < MIN_BET) s.bet = 0;
@@ -979,7 +1055,7 @@ export class Table extends DurableObject {
   }
 
   betsOf(pid) {
-    return this.t.seats.reduce((sum, s) => sum + (s && s.pid === pid ? s.bet : 0), 0);
+    return this.t.seats.reduce((sum, s) => sum + (s && s.pid === pid ? stakeOf(s) : 0), 0);
   }
 
   // Ostatni sygnał z telefonu: ping (co 20 s) albo moment połączenia.
@@ -1081,6 +1157,10 @@ export class Table extends DurableObject {
           name: p.name,
           bankroll: p.bankroll,
           bet: s.bet,
+          pp: s.pp || 0,
+          t3: s.t3 || 0,
+          last: s.lastBet ? s.lastBet + (s.lastPp || 0) + (s.lastT3 || 0) : 0,
+          side: s.side || null,
           ready: s.ready,
           sitOut: s.sitOut,
           leaving: s.leaving,

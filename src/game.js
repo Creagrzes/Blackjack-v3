@@ -54,3 +54,32 @@ export function evaluate(cards) {
     bust: total > 21
   };
 }
+
+// ---------------------------------------------------------------------------
+// Zakłady poboczne – rozliczane od razu po rozdaniu
+// ---------------------------------------------------------------------------
+
+const isRed = (s) => s === "♥" || s === "♦";
+
+// Perfect Pairs: dwie pierwsze karty gracza tej samej rangi.
+export function perfectPairs(a, b) {
+  if (a.r !== b.r) return null;
+  if (a.s === b.s) return { mult: 25, label: "Idealna para" };
+  if (isRed(a.s) === isRed(b.s)) return { mult: 12, label: "Para w kolorze" };
+  return { mult: 6, label: "Mieszana para" };
+}
+
+// 21+3: dwie karty gracza i odkryta karta krupiera jako układ pokerowy.
+export function twentyOnePlusThree(cards) {
+  const idx = cards.map((c) => RANKS.indexOf(c.r)).sort((x, y) => x - y);
+  const flush = cards.every((c) => c.s === cards[0].s);
+  const trips = cards.every((c) => c.r === cards[0].r);
+  // As może być na górze (Q-K-A) albo na dole (A-2-3).
+  const straight = (idx[0] + 1 === idx[1] && idx[1] + 1 === idx[2]) || (idx[0] === 0 && idx[1] === 1 && idx[2] === 12);
+  if (trips && flush) return { mult: 100, label: "Trójka w kolorze" };
+  if (straight && flush) return { mult: 40, label: "Poker" };
+  if (trips) return { mult: 30, label: "Trójka" };
+  if (straight) return { mult: 10, label: "Strit" };
+  if (flush) return { mult: 5, label: "Kolor" };
+  return null;
+}

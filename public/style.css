@@ -387,3 +387,57 @@ input { -webkit-user-select: text; user-select: text; }
   max-width: 80%; text-align: center;
 }
 .toast.err { background: rgba(140,30,23,.95); }
+
+/* ---------- Zakłady poboczne ---------- */
+.spots { display: flex; align-items: flex-end; justify-content: center; gap: 0.3em; margin-bottom: -0.3em; position: relative; z-index: 1; }
+.spots .spot { margin-bottom: 0; }
+.spot.on, .sspot.on { border-color: var(--gold); border-style: solid; box-shadow: 0 0 0.6em rgba(233,205,131,.55); }
+.sspot {
+  width: 1.55em; height: 1.55em; border-radius: 50%; flex: none; padding: 0; margin-bottom: 1em;
+  border: 0.1em dashed rgba(233,205,131,.45); background: rgba(0,0,0,.15);
+  display: flex; align-items: center; justify-content: center; position: relative;
+  color: rgba(233,205,131,.7); font-weight: 800;
+}
+.sspot .sl { font-size: 0.4em; letter-spacing: .02em; }
+.sspot .chip-face { width: 1.15em; height: 1.15em; }
+.sspot .chip-face::after { border-width: 0.05em; }
+.sspot .amount { font-size: 0.5em; bottom: auto; top: -1.1em; }
+.sspot.has { border-style: solid; border-color: rgba(233,205,131,.35); }
+.sspot.win { border: 0.1em solid var(--green-soft); color: var(--green-soft); animation: winGlow 1.2s ease-in-out infinite; }
+.sspot.win b { font-size: 0.45em; }
+.sspot.lost { opacity: .3; }
+
+/* Na co idą żetony: zakład główny / Pary / 21+3 */
+.tgts { display: flex; gap: 0.2em; flex: none; }
+.tgt {
+  border: 0.08em solid var(--line); background: transparent; border-radius: 0.6em;
+  padding: 0.2em 0.45em; min-width: 3.3em; text-align: left; line-height: 1.05;
+}
+.tgt small { display: block; font-size: 0.55em; color: var(--muted); white-space: nowrap; }
+.tgt b { font-family: var(--serif); font-size: 0.85em; color: var(--gold); font-variant-numeric: tabular-nums; }
+.tgt.on { border-color: var(--gold); background: rgba(233,205,131,.12); }
+.bar .btn { padding: 0.55em 0.65em; }
+
+/* ---------- Lecące żetony ---------- */
+.fx { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
+.fx-chip { position: absolute; width: 1.6em; height: 1.6em; transform: translate(-50%, -50%); }
+.fx-chip .chip-face { position: absolute; left: 0; width: 1.6em; height: 1.6em; }
+.fx-chip .chip-face:nth-child(1) { top: 0.18em; }
+.fx-chip .chip-face:nth-child(2) { top: 0; }
+.fx-chip .amount { bottom: -0.7em; }
+.fx-label {
+  position: absolute; transform: translate(-50%, -50%); white-space: nowrap;
+  font-family: var(--serif); font-weight: 700; font-size: 1em; color: var(--gold);
+  text-shadow: 0 0.08em 0.3em rgba(0,0,0,.8);
+  animation: floatUp 1.7s ease-out forwards;
+}
+.fx-label.win { color: var(--green-soft); }
+.fx-label.big { font-size: 0.8em; color: var(--gold); background: rgba(10,8,4,.82); border: 1px solid var(--gold-deep); border-radius: 999px; padding: 0.15em 0.7em; }
+@keyframes floatUp {
+  0% { opacity: 0; transform: translate(-50%, -20%) scale(.8); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -160%) scale(1); }
+}
+.plate.paid { animation: platePaid .7s ease-out; }
+@keyframes platePaid { 40% { box-shadow: 0 0 0 0.14em var(--green-soft), 0 0 1.2em rgba(143,224,172,.7); } }
