@@ -34,7 +34,8 @@ let drawerOpen = false;
 let barMore = false;
 let betTarget = "bet";      // na co idą żetony: zakład główny, Pary (pp) albo 21+3 (t3)
 let fxResultRound = null;   // runda, dla której już pokazano zgarnianie/wypłatę żetonów
-let fxSideRound = null;     // runda, dla której już pokazano rozliczenie zakładów pobocznych
+let fxSideRound = null;
+const shownNets = new Set(); // wyniki boksów, które już się pojawiły (animacja tylko raz)     // runda, dla której już pokazano rozliczenie zakładów pobocznych
 let holeState = "";       // czy zakryta karta krupiera była jeszcze zakryta
 let seenCards = null;       // karty już pokazane (null = pierwszy stan po wejściu, bez animacji)
 let newCards = [];          // karty, które pojawiły się w tym rysowaniu: [klucz, kolejność]
@@ -350,7 +351,16 @@ function seatHtml(s, i, mine) {
   if (s.ins > 0) tags.push("ubezp. " + fmt(s.ins));
 
   const plateCls = "plate" + (isMine ? " mine" : "") + (isMine && i === sel ? " sel" : "") + (s.away ? " away" : "");
-  return '<div class="seat' + (isTurn ? " turn" : "") + '" data-i="' + i + '" style="' + pos + '">' +
+  // Po rundzie: ile wyszło na tym boksie (zakład, poboczne i ubezpieczenie razem).
+  let boxNet = "";
+  if (S.phase === "result" && s.net != null) {
+    const key = S.roundNo + ":" + i;
+    if (shownNets.size > 300) shownNets.clear();
+    const fresh = !shownNets.has(key);
+    shownNets.add(key);
+    boxNet = '<div class="box-net ' + (s.net > 0 ? "pos" : s.net < 0 ? "neg" : "zero") + (fresh ? " fresh" : "") + '">' + signed(s.net) + "</div>";
+  }
+  return '<div class="seat' + (isTurn ? " turn" : "") + '" data-i="' + i + '" style="' + pos + '">' + boxNet +
     (hands ? '<div class="hands' + (multi ? " multi" : "") + '">' + hands + "</div>" : "") +
     spot +
     '<div class="' + plateCls + '"' + (isMine ? ' data-select="' + i + '"' : "") + ">" +

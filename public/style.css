@@ -441,3 +441,17 @@ input { -webkit-user-select: text; user-select: text; }
 }
 .plate.paid { animation: platePaid .7s ease-out; }
 @keyframes platePaid { 40% { box-shadow: 0 0 0 0.14em var(--green-soft), 0 0 1.2em rgba(143,224,172,.7); } }
+
+/* Wynik boksu po rundzie */
+.box-net {
+  position: absolute; left: 50%; top: -1.6em; transform: translateX(-50%); z-index: 4;
+  padding: 0.15em 0.65em; border-radius: 999px; white-space: nowrap;
+  background: rgba(10,8,4,.72); border: 1px solid currentColor;
+  font-weight: 800; font-size: 0.72em; font-variant-numeric: tabular-nums;
+  box-shadow: 0 0.15em 0.5em rgba(0,0,0,.4);
+}
+.box-net.pos { color: var(--green-soft); }
+.box-net.neg { color: var(--red-soft); }
+.box-net.zero { color: var(--muted); }
+.box-net.fresh { animation: boxNetIn .6s ease-out 1.3s both; }
+@keyframes boxNetIn { from { opacity: 0; transform: translate(-50%, 0.6em) scale(.85); } to { opacity: 1; transform: translate(-50%, 0); } }

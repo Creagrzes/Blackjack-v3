@@ -594,6 +594,7 @@ export class Table extends DurableObject {
       s.ins = null;
       s.ready = false;
       s.side = null;
+      s.net = null;
       const stake = stakeOf(s);
       if (s.bet > 0 && !s.sitOut && !s.leaving && stake <= left[s.pid] && this.isConnected(s.pid)) {
         included.push(i);
@@ -938,6 +939,19 @@ export class Table extends DurableObject {
         }
       }
     }
+    // Wynik każdego boksu osobno (gracz może mieć kilka miejsc) – pokazywany przy miejscu po rundzie.
+    const dealerBJ = d.bj && t.dealer.length === 2;
+    for (const si of t.included) {
+      const s = t.seats[si];
+      let net = 0;
+      for (const h of s.hands) {
+        if (h.result === "win") net += h.label.startsWith("BLACKJACK") ? Math.floor(h.bet * 1.5) : h.bet;
+        else if (h.result === "lose") net -= h.label.startsWith("PODDANE") ? h.bet - Math.floor(h.bet / 2) : h.bet;
+      }
+      for (const r of s.side || []) net += r.mult ? r.bet * r.mult : -r.bet;
+      if (s.ins > 0) net += dealerBJ ? s.ins * 2 : -s.ins;
+      s.net = net;
+    }
     const pids = [...new Set(t.included.map((si) => t.seats[si].pid))];
     for (const pid of pids) {
       const p = this.players.get(pid);
@@ -991,6 +1005,7 @@ export class Table extends DurableObject {
       s.ins = null;
       s.ready = false;
       s.side = null;
+      s.net = null;
       // Ten sam zakład co w poprzedniej rundzie, o ile starczy żetonów.
       s.bet = played && !s.sitOut ? Math.min(s.lastBet, left[s.pid]) : 0;
       if (s.bet < MIN_BET) s.bet = 0;
@@ -1161,6 +1176,7 @@ export class Table extends DurableObject {
           t3: s.t3 || 0,
           last: s.lastBet ? s.lastBet + (s.lastPp || 0) + (s.lastT3 || 0) : 0,
           side: s.side || null,
+          net: s.net == null ? null : s.net,
           ready: s.ready,
           sitOut: s.sitOut,
           leaving: s.leaving,
