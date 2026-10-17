@@ -3,7 +3,7 @@ import { newShoe, evaluate, rankValue } from "./game.js";
 
 const SEATS = 6;
 const MAX_HANDS_PER_SEAT = 4;
-const CHIPS = [2, 5, 10, 15, 100, 200, 300, 500, 1000, 2500];
+const CHIPS = [2, 5, 10, 15, 25, 50, 100, 200, 300, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000];
 const MIN_BET = CHIPS[0];
 const MAX_SEATS_PER_PLAYER = 3;
 const BET_MS = 15000;
@@ -17,7 +17,7 @@ const STALE_MS = 45000;
 const HOUSEKEEPING_MS = 15000;
 const AFK_TIMEOUTS = 2;
 const CUT_CARD = 78;
-const MAX_DEPOSIT = 1000000;
+const MAX_DEPOSIT = 10000000;
 const LOG_SIZE = 60;
 const ERRLOG_SIZE = 200;
 const RECENT_SIZE = 40;

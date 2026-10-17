@@ -2,79 +2,100 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0f2a1d">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#0b3b26">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Blackjack</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Blackjack 21</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🂡</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="top">
-    <div class="who">
-      <span id="meName" class="me-name">…</span>
-      <span class="bank">💰 <b id="meBank">0</b></span>
-    </div>
-    <div class="top-btns">
-      <button id="btnDeposit" class="btn small gold">+ Wpłać</button>
-      <button id="btnStats" class="btn small ghost">Statystyki</button>
-    </div>
-  </header>
-
-  <div id="conn" class="conn hidden">Łączenie…</div>
-
-  <main class="table">
-    <section class="dealer">
-      <div class="label">Krupier <span id="dealerTotal" class="total"></span></div>
-      <div id="dealerCards" class="cards"></div>
-    </section>
-
-    <section class="status">
-      <div id="message" class="message"></div>
-      <div class="timer"><div id="timerBar" class="timer-bar"></div></div>
-    </section>
-
-    <section id="seats" class="seats"></section>
-  </main>
-
-  <footer id="controls" class="controls"></footer>
-
-  <div id="toast" class="toast hidden"></div>
-
-  <dialog id="dlgName" class="dlg">
-    <form id="formName" method="dialog">
-      <h2>Witaj przy stole</h2>
-      <p class="muted">Podaj swój nick (2–16 znaków).</p>
-      <input id="inName" maxlength="16" autocomplete="nickname" placeholder="Nick" required>
-      <p id="nameErr" class="err"></p>
-      <button class="btn gold wide" type="submit">Graj</button>
-    </form>
-  </dialog>
-
-  <dialog id="dlgDeposit" class="dlg">
-    <form id="formDeposit" method="dialog">
-      <h2>Wpłać żetony</h2>
-      <div class="quick">
-        <button type="button" class="btn ghost" data-amt="100">100</button>
-        <button type="button" class="btn ghost" data-amt="500">500</button>
-        <button type="button" class="btn ghost" data-amt="1000">1 000</button>
-        <button type="button" class="btn ghost" data-amt="5000">5 000</button>
+  <!-- Cała gra jest zawsze pozioma: na telefonie trzymanym pionowo #app jest obracany o 90°. -->
+  <div id="app">
+    <header class="top">
+      <div class="brand">Blackjack <b>21</b></div>
+      <div id="status" class="status"></div>
+      <div class="top-right">
+        <div class="me-pill"><span id="meName">…</span> <b id="meBank">0</b></div>
+        <button id="btnDeposit" class="pill">Wpłać</button>
+        <button id="btnStats" class="pill">Statystyki</button>
       </div>
-      <input id="inDeposit" type="number" inputmode="numeric" min="1" max="1000000" placeholder="Inna kwota">
-      <div class="row">
-        <button type="button" class="btn ghost" data-close>Anuluj</button>
-        <button class="btn gold" type="submit">Wpłać</button>
-      </div>
-    </form>
-  </dialog>
+    </header>
 
-  <dialog id="dlgStats" class="dlg wide-dlg">
-    <div class="dlg-head">
-      <h2>Statystyki</h2>
-      <button type="button" class="btn small ghost" data-close>Zamknij</button>
+    <div id="conn" class="conn hidden">Łączenie…</div>
+
+    <main class="felt-wrap">
+      <div class="felt">
+        <section class="dealer">
+          <div class="dealer-head">Krupier <span id="dealerTotal" class="tot">–</span><span id="dealerRes"></span></div>
+          <div id="dealerCards" class="cards dealer-cards"></div>
+        </section>
+
+        <section id="center" class="center">
+          <div id="message" class="message"></div>
+          <div class="rules">Blackjack płaci 3:2 · ubezpieczenie 2:1 · krupier stoi na 17</div>
+        </section>
+
+        <section id="actionPanel" class="action-panel hidden"></section>
+
+        <section id="seats" class="seats"></section>
+
+        <button id="drawerTab" class="drawer-tab hidden" aria-label="Więcej żetonów">Żetony <span>▸</span></button>
+        <aside id="drawer" class="drawer hidden"></aside>
+      </div>
+    </main>
+
+    <footer id="bar" class="bar"></footer>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- Okna -->
+    <div id="mName" class="modal hidden">
+      <form id="formName" class="box">
+        <h2>Blackjack 21</h2>
+        <p class="muted">Podaj swój nick (2–16 znaków). Zapamiętamy go na tym telefonie.</p>
+        <input id="inName" maxlength="16" autocomplete="nickname" placeholder="Twój nick" required>
+        <p id="nameErr" class="err"></p>
+        <button class="btn gold wide" type="submit">Siadam do stołu</button>
+      </form>
     </div>
-    <div id="statsBody"></div>
-  </dialog>
+
+    <div id="mDeposit" class="modal hidden">
+      <form id="formDeposit" class="box">
+        <h2>Wpłać żetony</h2>
+        <p class="muted">Saldo: <b id="depBank">0</b></p>
+        <div class="quick">
+          <button type="button" class="btn green" data-dep="500">+500</button>
+          <button type="button" class="btn green" data-dep="1000">+1 000</button>
+          <button type="button" class="btn green" data-dep="5000">+5 000</button>
+          <button type="button" class="btn green" data-dep="10000">+10 000</button>
+          <button type="button" class="btn green" data-dep="100000">+100 000</button>
+          <button type="button" class="btn green" data-dep="1000000">+1 000 000</button>
+        </div>
+        <div class="row">
+          <input id="inDeposit" type="number" inputmode="numeric" min="1" max="10000000" placeholder="Własna kwota">
+          <button class="btn gold" type="submit">Wpłać</button>
+        </div>
+        <button type="button" class="link" data-close>Zamknij</button>
+      </form>
+    </div>
+
+    <div id="mStats" class="modal hidden">
+      <div class="box wide">
+        <div class="box-head">
+          <h2>Statystyki graczy</h2>
+          <button type="button" class="link" data-close>Zamknij ×</button>
+        </div>
+        <p class="muted">Liczy się każda runda: czy gracz skończył ją na plusie, na zero, czy na minusie – niezależnie od stawki.</p>
+        <div id="statsBody"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
