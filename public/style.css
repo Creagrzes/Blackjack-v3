@@ -43,7 +43,9 @@ input { -webkit-user-select: text; user-select: text; }
   padding: 0 max(0.6em, env(safe-area-inset-right)) 0.4em max(0.6em, env(safe-area-inset-left));
   overflow: hidden;
 }
-#app.rotated { padding: 0 0.6em 0.4em; }
+#app.rotated {
+  padding: 0 max(0.6em, env(safe-area-inset-bottom)) 0.4em max(0.6em, env(safe-area-inset-top));
+}
 
 /* ---------- Górny pasek ---------- */
 .top {
@@ -88,7 +90,8 @@ input { -webkit-user-select: text; user-select: text; }
   display: inline-block; padding: 0.05em 0.5em; border-radius: 999px; font-size: 0.62em; font-weight: 800;
   letter-spacing: .04em; border: 1px solid currentColor; background: rgba(0,0,0,.35); white-space: nowrap;
 }
-.res.win { color: var(--green-soft); }
+.res.win { color: var(--green-soft); animation: winGlow 1.2s ease-in-out 3; }
+@keyframes winGlow { 50% { box-shadow: 0 0 0.7em rgba(143,224,172,.8); transform: scale(1.08); } }
 .res.lose { color: var(--red-soft); }
 .res.push { color: var(--gold); }
 
@@ -117,8 +120,41 @@ input { -webkit-user-select: text; user-select: text; }
   background: repeating-linear-gradient(45deg, #1f3a6b 0 0.18em, #2b4c86 0.18em 0.36em);
   border: 0.14em solid var(--gold-deep);
 }
-.card.new { animation: deal .28s ease-out; }
-@keyframes deal { from { transform: translateY(-0.8em) scale(.9); opacity: 0; } to { transform: none; opacity: 1; } }
+.card.deal {
+  z-index: 3;
+  animation: dealMove .6s cubic-bezier(.22,.75,.3,1) var(--delay, 0ms) both;
+}
+.card.deal:not(.back)::after {
+  content: ""; position: absolute; inset: -0.14em; border-radius: inherit;
+  background: repeating-linear-gradient(45deg, #1f3a6b 0 0.18em, #2b4c86 0.18em 0.36em);
+  border: 0.14em solid var(--gold-deep);
+  animation: dealBack .6s linear var(--delay, 0ms) both;
+}
+@keyframes dealMove {
+  0%   { transform: translate(var(--dx, 0), var(--dy, 0)) rotate(-28deg) scale(.75); opacity: 0; }
+  8%   { opacity: 1; }
+  62%  { transform: translate(0, 0) rotate(3deg) scale(1.08); }
+  78%  { transform: scaleX(0.04) scale(1.08); }
+  100% { transform: none; opacity: 1; }
+}
+.card.flip { animation: holeFlip .5s ease-in-out; }
+.card.flip::after {
+  content: ""; position: absolute; inset: -0.14em; border-radius: inherit;
+  background: repeating-linear-gradient(45deg, #1f3a6b 0 0.18em, #2b4c86 0.18em 0.36em);
+  border: 0.14em solid var(--gold-deep); animation: dealBack .5s linear both; animation-name: holeBack;
+}
+@keyframes holeFlip { 0% { transform: scaleX(1); } 50% { transform: scaleX(0.04); } 100% { transform: scaleX(1); } }
+@keyframes holeBack { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes dealBack { 0%, 77% { opacity: 1; } 78%, 100% { opacity: 0; } }
+
+.shoe { position: absolute; right: 7%; top: 0.5em; width: 2.3em; height: 3.2em; z-index: 1; }
+.shoe i {
+  position: absolute; inset: 0; border-radius: 0.3em;
+  background: repeating-linear-gradient(45deg, #1f3a6b 0 0.18em, #2b4c86 0.18em 0.36em);
+  border: 0.12em solid var(--gold-deep); box-shadow: 0 0.1em 0.25em rgba(0,0,0,.5);
+}
+.shoe i:nth-child(1) { transform: translate(0.24em, 0.2em) rotate(8deg); }
+.shoe i:nth-child(2) { transform: translate(0.12em, 0.1em) rotate(4deg); }
 .dealer-cards { margin-top: 0.25em; }
 .dealer-cards .card { --w: 2.3em; }
 
@@ -143,6 +179,7 @@ input { -webkit-user-select: text; user-select: text; }
 .hand-info { display: flex; align-items: center; gap: 0.25em; margin-top: 0.15em; font-size: 0.8em; }
 .hand-info .tot { font-size: 0.85em; }
 .hands.multi .hand-info { font-size: 0.65em; }
+.hand.dealing .hand-info { visibility: hidden; }
 .dbl { font-size: 0.65em; color: var(--gold); font-weight: 800; }
 
 .spot {
@@ -220,23 +257,44 @@ input { -webkit-user-select: text; user-select: text; }
 /* ---------- Żetony ---------- */
 .chip {
   width: 2.45em; height: 2.45em; border-radius: 50%; padding: 0; border: 0; flex: none;
-  position: relative; color: #fff; font-weight: 900; font-size: 1em;
-  box-shadow: 0 0.12em 0.3em rgba(0,0,0,.55);
+  position: relative; color: #fff; font-weight: 900; font-size: 1em; background: none;
+  transition: transform .12s;
 }
 .chip-face {
-  border-radius: 50%; display: block;
+  border-radius: 50%; display: block; position: relative;
   background:
-    radial-gradient(circle, var(--c) 0 52%, transparent 53%),
-    repeating-conic-gradient(var(--c) 0 22.5deg, rgba(255,255,255,.85) 22.5deg 30deg, var(--c) 30deg 45deg);
-  box-shadow: inset 0 0 0 0.1em rgba(0,0,0,.25), 0 0.08em 0.15em rgba(0,0,0,.5);
+    radial-gradient(circle at 50% 35%, rgba(255,255,255,.35), transparent 55%),
+    radial-gradient(circle, var(--c) 0 58%, transparent 59%),
+    repeating-conic-gradient(from 11deg, #fdfaf2 0 22deg, var(--c) 22deg 60deg);
+  box-shadow:
+    inset 0 0 0 0.07em rgba(0,0,0,.35),
+    inset 0 -0.12em 0.18em rgba(0,0,0,.35),
+    0 0.13em 0 rgba(0,0,0,.45),
+    0 0.2em 0.35em rgba(0,0,0,.45);
+}
+/* wewnętrzny przerywany pierścień jak na prawdziwym żetonie */
+.chip-face::after {
+  content: ""; position: absolute; inset: 21%; border-radius: 50%;
+  border: 0.07em dashed rgba(255,255,255,.75);
+  box-shadow: 0 0 0 0.05em rgba(0,0,0,.25), inset 0 0 0 0.05em rgba(0,0,0,.2);
 }
 .chip .chip-face { position: absolute; inset: 0; }
 .chip b {
-  position: relative; z-index: 1; font-size: 0.68em; text-shadow: 0 0.06em 0.12em rgba(0,0,0,.7);
+  position: relative; z-index: 1; font-size: 0.66em; letter-spacing: -0.02em;
+  text-shadow: 0 0 0.15em rgba(0,0,0,.9), 0 0.06em 0.1em rgba(0,0,0,.8);
   display: flex; align-items: center; justify-content: center; height: 100%;
 }
-.chip:disabled { opacity: .3; box-shadow: none; }
-.chip:not(:disabled):active { transform: scale(.9); }
+.chip:disabled { opacity: .3; filter: grayscale(.4); }
+.chip:not(:disabled):active { transform: translateY(-0.15em) scale(.92); }
+.chip.more {
+  border: 0.12em dashed var(--gold); color: var(--gold); font-size: 1.1em; line-height: 1;
+  background: rgba(233,205,131,.08); width: 2.2em; height: 2.2em; align-self: center;
+}
+.chip.more.on { background: var(--gold-deep); color: #241d12; border-style: solid; }
+.stack .chip-face { box-shadow: inset 0 0 0 0.07em rgba(0,0,0,.35), 0 0.1em 0 rgba(0,0,0,.5); }
+.stack .chip-face::after { inset: 24%; border-width: 0.06em; }
+.stack.drop { animation: chipDrop .35s ease-out; }
+@keyframes chipDrop { from { transform: translateY(-0.6em) scale(1.15); opacity: .4; } }
 
 /* Kolumna żetonów po lewej */
 .drawer-tab {

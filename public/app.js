@@ -2,12 +2,13 @@
 
 // Klient stołu: łączy się z /ws, wysyła akcje gracza i rysuje stan, który przysyła serwer.
 
-const CHIPS = [2, 5, 10, 15, 25, 50, 100, 200, 300, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000];
+const CHIPS = [2, 5, 10, 15, 25, 50, 100, 200, 300, 500, 1000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 250000, 500000];
 const BAR_CHIPS = [2, 5, 10, 15, 100, 200, 300, 500, 1000, 2500];
+const BAR_MORE = [10000, 20000, 50000, 100000];
 const CHIP_COLORS = {
   2: "#7a7a7a", 5: "#c0392b", 10: "#1e7b48", 15: "#7d3fa6", 25: "#3b8f3b", 50: "#d35400",
   100: "#262626", 200: "#b8901f", 300: "#9e9e9e", 500: "#12806b", 1000: "#5b2a86", 2500: "#1565c0",
-  5000: "#a0144f", 10000: "#00838f", 25000: "#6d4c41", 50000: "#ad1457", 100000: "#111111",
+  5000: "#a0144f", 10000: "#00838f", 20000: "#c2185b", 25000: "#6d4c41", 50000: "#ad1457", 100000: "#111111",
   250000: "#4527a0", 500000: "#b8860b"
 };
 const PHASE_MS = { betting: 15000, insurance: 10000, playing: 20000, result: 5000 };
@@ -30,7 +31,16 @@ let me = null;         // mój profil
 let clockOffset = 0;   // serwer − telefon
 let sel = null;        // wybrane moje miejsce
 let drawerOpen = false;
-let seenCards = new Set();
+let barMore = false;
+let holeState = "";       // czy zakryta karta krupiera była jeszcze zakryta
+let seenCards = null;       // karty już pokazane (null = pierwszy stan po wejściu, bez animacji)
+let newCards = [];          // karty, które pojawiły się w tym rysowaniu: [klucz, kolejność]
+const dealing = new Map();  // klucz karty -> czas, w którym ma wylecieć z buta
+const lastStake = [];       // ostatnia stawka na miejscu – żeby żetony „spadały” tylko przy zmianie
+const DEAL_STEP_MS = 190;
+const DEAL_MS = 600;
+let dealBusyUntil = 0;
+let dealTimer = null;
 
 function storage(fn) {
   try { return fn(localStorage); } catch { return null; }
@@ -145,13 +155,13 @@ function onMessage(msg) {
 // Rysowanie
 // ---------------------------------------------------------------------------
 
-function cardHtml(c, key) {
-  const isNew = !seenCards.has(key);
-  seenCards.add(key);
-  const cls = isNew ? " new" : "";
-  if (!c) return '<div class="card back' + cls + '"></div>';
+// order: kolejność rozdawania (najpierw pierwsze karty graczy od miejsca 1, potem krupier itd.)
+function cardHtml(c, key, order) {
+  if (seenCards && !seenCards.has(key)) newCards.push([key, order]);
+  const k = ' data-k="' + key + '"';
+  if (!c) return '<div class="card back"' + k + "></div>";
   const red = c.s === "♥" || c.s === "♦";
-  return '<div class="card' + (red ? " red" : "") + cls + '">' +
+  return '<div class="card' + (red ? " red" : "") + '"' + k + ">" +
     '<span class="tl">' + esc(c.r) + "<i>" + esc(c.s) + "</i></span>" +
     '<span class="mid">' + esc(c.s) + "</span></div>";
 }
@@ -193,7 +203,7 @@ function render() {
   if (!S) return;
   const mine = mySeats();
   if (!mine.includes(sel)) sel = mine.length ? mine[0] : null;
-  if (seenCards.size > 400) seenCards = new Set();
+  newCards = [];
 
   $("meName").textContent = me ? me.name : "Gość";
   $("meBank").textContent = me ? fmt(me.bankroll) : "0";
@@ -201,7 +211,10 @@ function render() {
 
   // Krupier
   const d = S.dealer;
-  $("dealerCards").innerHTML = d.cards.map((c, i) => cardHtml(c, S.roundNo + "d" + i + (c ? c.r + c.s : "x"))).join("");
+  $("dealerCards").innerHTML = d.cards.map((c, i) => cardHtml(c, S.roundNo + "d" + i, i * 10 + 9)).join("");
+  const hole = d.cards.length > 1 ? S.roundNo + ":" + (d.cards[1] ? "up" : "down") : "";
+  if (hole.endsWith("up") && holeState === S.roundNo + ":down") $("dealerCards").children[1].classList.add("flip");
+  holeState = hole;
   $("dealerTotal").textContent = d.cards.length ? totalText(d) : "–";
   $("dealerRes").innerHTML = d.bust ? '<span class="res lose">PRZEGIĘCIE</span>' : d.bj && !d.cards.includes(null) ? '<span class="res push">BLACKJACK</span>' : "";
 
@@ -211,17 +224,70 @@ function render() {
 
   $("seats").innerHTML = S.seats.map((s, i) => seatHtml(s, i, mine)).join("");
 
-  renderActionPanel(myTurn);
-  renderBar(mine, myTurn);
+  registerDeal();
+  // Przyciski ruchu i ubezpieczenia pokazujemy dopiero, gdy karty dolecą na stół.
+  const busy = dealBusyUntil - Date.now();
+  if (busy > 0) {
+    clearTimeout(dealTimer);
+    dealTimer = setTimeout(render, busy + 30);
+  }
+  renderActionPanel(myTurn && busy <= 0);
+  renderBar(mine, myTurn, busy > 0);
   renderDrawer(mine);
+  animateDeal();
   updateTimers();
+}
+
+// Karty wylatują po kolei z buta krupiera i odwracają się w locie.
+// Stan przychodzi często, więc karta w trakcie lotu po przerysowaniu dostaje ujemne opóźnienie
+// i leci dalej od miejsca, w którym była.
+function registerDeal() {
+  const now = Date.now();
+  if (!seenCards) {
+    seenCards = new Set([...document.querySelectorAll(".card[data-k]")].map((el) => el.dataset.k));
+    return;
+  }
+  newCards.sort((a, b) => a[1] - b[1]);
+  newCards.forEach(([key], n) => {
+    seenCards.add(key);
+    dealing.set(key, now + n * DEAL_STEP_MS);
+    dealBusyUntil = Math.max(dealBusyUntil, now + n * DEAL_STEP_MS + DEAL_MS);
+  });
+}
+
+function animateDeal() {
+  const now = Date.now();
+  if (seenCards.size > 600) seenCards = new Set([...document.querySelectorAll(".card[data-k]")].map((el) => el.dataset.k));
+
+  const shoe = $("shoe").getBoundingClientRect();
+  const sx = shoe.left + shoe.width / 2, sy = shoe.top + shoe.height / 2;
+  const rotated = $("app").classList.contains("rotated");
+  let dealerDealing = false;
+  for (const el of document.querySelectorAll(".card[data-k]")) {
+    const start = dealing.get(el.dataset.k);
+    if (start == null) continue;
+    if (now > start + DEAL_MS) { dealing.delete(el.dataset.k); continue; }
+    const r = el.getBoundingClientRect();
+    let dx = sx - (r.left + r.width / 2), dy = sy - (r.top + r.height / 2);
+    // Ekran obrócony o 90°: przesunięcie na ekranie zamieniamy na układ gry.
+    if (rotated) [dx, dy] = [dy, -dx];
+    el.style.setProperty("--dx", dx.toFixed(0) + "px");
+    el.style.setProperty("--dy", dy.toFixed(0) + "px");
+    el.style.setProperty("--delay", start - now + "ms");
+    el.classList.add("deal");
+    // Suma punktów pojawia się dopiero, gdy karta wyląduje.
+    const hand = el.closest(".hand");
+    if (hand) hand.classList.add("dealing");
+    else dealerDealing = true;
+  }
+  $("dealerTotal").style.visibility = dealerDealing ? "hidden" : "";
 }
 
 // Miejsca ułożone w łuk: miejsce 1 po prawej, 6 po lewej, skrajne wyżej.
 function seatPos(i) {
-  const x = 90 - i * 16;
-  const t = (x - 50) / 40;
-  return "left:" + x + "%;bottom:" + (2 + 6 * t * t).toFixed(1) + "%";
+  const x = 87.5 - i * 15;
+  const t = (x - 50) / 37.5;
+  return "left:" + x + "%;bottom:" + (2.5 + 7 * t * t).toFixed(1) + "%";
 }
 
 function seatHtml(s, i, mine) {
@@ -243,7 +309,7 @@ function seatHtml(s, i, mine) {
     const active = isTurn && S.turn.hand === hi;
     const cls = "hand" + (active ? " active" : "") + (h.result === "lose" ? " lose" : "");
     return '<div class="' + cls + '">' +
-      '<div class="cards">' + h.cards.map((c, ci) => cardHtml(c, S.roundNo + "s" + i + "h" + hi + "c" + ci + c.r + c.s)).join("") + "</div>" +
+      '<div class="cards">' + h.cards.map((c, ci) => cardHtml(c, S.roundNo + "s" + i + "h" + hi + "c" + ci + c.r + c.s, ci * 10 + i)).join("") + "</div>" +
       '<div class="hand-info"><span class="tot">' + esc(totalText(h)) + "</span>" +
       (h.doubled ? '<span class="dbl">×2</span>' : "") +
       (h.label ? '<span class="res ' + esc(h.result || "") + '">' + esc(h.label) + "</span>" : "") +
@@ -252,8 +318,10 @@ function seatHtml(s, i, mine) {
 
   // Stawka: w trakcie rundy suma rąk, przy obstawianiu bieżący zakład.
   const staked = s.hands.length ? s.hands.reduce((a, h) => a + h.bet, 0) : s.bet;
+  const drop = staked > (lastStake[i] || 0);
+  lastStake[i] = staked;
   const spot = staked > 0
-    ? '<div class="spot has"><div class="stack">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + fmt(staked) + "</span></div>"
+    ? '<div class="spot has"><div class="stack' + (drop ? " drop" : "") + '">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + fmt(staked) + "</span></div>"
     : '<div class="spot num">' + (i + 1) + "</div>";
 
   const tags = [];
@@ -293,8 +361,17 @@ function renderActionPanel(myTurn) {
     '<button class="act surrender" data-act="surrender"' + (a.surrender ? "" : " disabled") + ">Poddaj</button>";
 }
 
-function renderBar(mine, myTurn) {
+function renderBar(mine, myTurn, dealingNow) {
   const el = $("bar");
+  const oldRow = el.querySelector(".chips-row");
+  const scroll = oldRow ? oldRow.scrollLeft : 0;
+  if (dealingNow && !isBetting()) el.innerHTML = '<div class="bar-text">Krupier rozdaje karty…</div>';
+  else renderBarInner(el, mine, myTurn);
+  const row = el.querySelector(".chips-row");
+  if (row) row.scrollLeft = scroll;
+}
+
+function renderBarInner(el, mine, myTurn) {
   if (!me) { el.innerHTML = '<div class="bar-text">Podaj nick, żeby dołączyć do gry.</div>'; return; }
   if (mine.length === 0) {
     el.innerHTML = '<div class="bar-text">' +
@@ -308,7 +385,8 @@ function renderBar(mine, myTurn) {
     const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet, 0);
     const withBet = mine.filter((i) => S.seats[i].bet > 0 && !S.seats[i].sitOut);
     const allReady = withBet.length > 0 && withBet.every((i) => S.seats[i].ready);
-    const chips = BAR_CHIPS.map((v) => chipBtn(v, betsMine + v > me.bankroll, "data-bet")).join("");
+    const chips = BAR_CHIPS.concat(barMore ? BAR_MORE : []).map((v) => chipBtn(v, betsMine + v > me.bankroll, "data-bet")).join("") +
+      '<button class="chip more' + (barMore ? " on" : "") + '" data-more aria-label="Więcej żetonów">' + (barMore ? "−" : "+") + "</button>";
     let readyLabel = "Postaw", readyOn = false;
     if (withBet.length && allReady) readyLabel = "Czekam…";
     else if (withBet.length) { readyLabel = "Gotowe"; readyOn = S.phase === "betting"; }
@@ -399,6 +477,12 @@ document.addEventListener("click", (e) => {
   else if (d.ins != null) send({ type: "insurance", seat: +d.ins, accept: d.accept === "1" });
   else if (d.dep != null) { send({ type: "deposit", amount: +d.dep }); closeModal("mDeposit"); }
   else if (d.drawer != null) { drawerOpen = d.drawer === "1"; render(); }
+  else if (d.more != null) {
+    barMore = !barMore;
+    render();
+    const row = document.querySelector(".chips-row");
+    if (row && barMore) row.scrollTo({ left: row.scrollWidth, behavior: "smooth" });
+  }
   else if (d.close != null) b.closest(".modal").classList.add("hidden");
   else if (d.select != null) { sel = +d.select; render(); }
 });
