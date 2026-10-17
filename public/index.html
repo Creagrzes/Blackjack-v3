@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f2a1d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Blackjack</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🂡</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="who">
+      <span id="meName" class="me-name">…</span>
+      <span class="bank">💰 <b id="meBank">0</b></span>
+    </div>
+    <div class="top-btns">
+      <button id="btnDeposit" class="btn small gold">+ Wpłać</button>
+      <button id="btnStats" class="btn small ghost">Statystyki</button>
+    </div>
+  </header>
+
+  <div id="conn" class="conn hidden">Łączenie…</div>
+
+  <main class="table">
+    <section class="dealer">
+      <div class="label">Krupier <span id="dealerTotal" class="total"></span></div>
+      <div id="dealerCards" class="cards"></div>
+    </section>
+
+    <section class="status">
+      <div id="message" class="message"></div>
+      <div class="timer"><div id="timerBar" class="timer-bar"></div></div>
+    </section>
+
+    <section id="seats" class="seats"></section>
+  </main>
+
+  <footer id="controls" class="controls"></footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <dialog id="dlgName" class="dlg">
+    <form id="formName" method="dialog">
+      <h2>Witaj przy stole</h2>
+      <p class="muted">Podaj swój nick (2–16 znaków).</p>
+      <input id="inName" maxlength="16" autocomplete="nickname" placeholder="Nick" required>
+      <p id="nameErr" class="err"></p>
+      <button class="btn gold wide" type="submit">Graj</button>
+    </form>
+  </dialog>
+
+  <dialog id="dlgDeposit" class="dlg">
+    <form id="formDeposit" method="dialog">
+      <h2>Wpłać żetony</h2>
+      <div class="quick">
+        <button type="button" class="btn ghost" data-amt="100">100</button>
+        <button type="button" class="btn ghost" data-amt="500">500</button>
+        <button type="button" class="btn ghost" data-amt="1000">1 000</button>
+        <button type="button" class="btn ghost" data-amt="5000">5 000</button>
+      </div>
+      <input id="inDeposit" type="number" inputmode="numeric" min="1" max="1000000" placeholder="Inna kwota">
+      <div class="row">
+        <button type="button" class="btn ghost" data-close>Anuluj</button>
+        <button class="btn gold" type="submit">Wpłać</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgStats" class="dlg wide-dlg">
+    <div class="dlg-head">
+      <h2>Statystyki</h2>
+      <button type="button" class="btn small ghost" data-close>Zamknij</button>
+    </div>
+    <div id="statsBody"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
