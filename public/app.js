@@ -3,8 +3,6 @@
 // Klient stołu: łączy się z /ws, wysyła akcje gracza i rysuje stan, który przysyła serwer.
 
 const CHIPS = [2, 5, 10, 15, 25, 50, 100, 200, 300, 500, 1000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 250000, 500000];
-const BAR_CHIPS = [2, 5, 10, 15, 100, 200, 300, 500, 1000, 2500];
-const BAR_MORE = [10000, 20000, 50000, 100000];
 const CHIP_COLORS = {
   2: "#7a7a7a", 5: "#c0392b", 10: "#1e7b48", 15: "#7d3fa6", 25: "#3b8f3b", 50: "#d35400",
   100: "#262626", 200: "#b8901f", 300: "#9e9e9e", 500: "#12806b", 1000: "#5b2a86", 2500: "#1565c0",
@@ -21,6 +19,13 @@ const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const fmt = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 const signed = (n) => (n > 0 ? "+" : n < 0 ? "−" : "±") + fmt(Math.abs(n));
 const chipLabel = (v) => (v >= 1000 ? v / 1000 + "k" : String(v));
+// Krótka kwota na wąskie miejsca: 2 500, 25k, 1,5M.
+const short = (n) => {
+  const trim = (x) => String(Math.round(x * 100) / 100).replace(".", ",");
+  if (n >= 1000000) return trim(n / 1000000) + "M";
+  if (n >= 10000) return trim(n / 1000) + "k";
+  return fmt(n);
+};
 
 let ws = null;
 let pingTimer = null;
@@ -30,8 +35,9 @@ let S = null;          // stan stołu
 let me = null;         // mój profil
 let clockOffset = 0;   // serwer − telefon
 let sel = null;        // wybrane moje miejsce
-let drawerOpen = false;
-let barMore = false;
+let pickerOpen = false;     // rozwinięta kolumna żetonów nad paskiem
+let pickerAnim = false;     // animacja tylko przy rozwinięciu, nie przy każdym odświeżeniu
+let activeChip = 100;       // ostatnio wybrany żeton – pod przyciskiem na pasku
 let betTarget = "bet";      // na co idą żetony: zakład główny, Pary (pp) albo 21+3 (t3)
 let fxResultRound = null;   // runda, dla której już pokazano zgarnianie/wypłatę żetonów
 let fxSideRound = null;
@@ -237,7 +243,6 @@ function render() {
   }
   renderActionPanel(myTurn && busy <= 0);
   renderBar(mine, myTurn, busy > 0);
-  renderDrawer(mine);
   animateDeal();
   updateTimers();
   chipEffects();
@@ -333,11 +338,11 @@ function seatHtml(s, i, mine) {
     ? '<button class="' + cls + onCls(k) + '" data-spot="' + k + '" data-target="' + k + '" data-seat="' + i + '">' + inner + "</button>"
     : '<div class="' + cls + '" data-spot="' + k + '">' + inner + "</div>";
   const main = staked > 0
-    ? spotTag("bet", "spot has", '<div class="stack' + (drop ? " drop" : "") + '">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + fmt(staked) + "</span>")
+    ? spotTag("bet", "spot has", '<div class="stack' + (drop ? " drop" : "") + '">' + chipFace(stackChip(staked)).repeat(3) + '</div><span class="amount">' + short(staked) + "</span>")
     : spotTag("bet", "spot num", String(i + 1));
   const side = (k, name) => {
     const res = s.side && s.side.find((x) => x.k === k);
-    if (s[k] > 0) return spotTag(k, "sspot has", chipFace(stackChip(s[k])) + '<span class="amount">' + fmt(s[k]) + "</span>");
+    if (s[k] > 0) return spotTag(k, "sspot has", chipFace(stackChip(s[k])) + '<span class="amount">' + short(s[k]) + "</span>");
     if (res && res.mult) return spotTag(k, "sspot win", "<b>" + res.mult + ":1</b>");
     return spotTag(k, "sspot" + (res ? " lost" : ""), '<span class="sl">' + name + "</span>");
   };
@@ -391,12 +396,18 @@ function renderActionPanel(myTurn) {
 
 function renderBar(mine, myTurn, dealingNow) {
   const el = $("bar");
-  const oldRow = el.querySelector(".chips-row");
-  const scroll = oldRow ? oldRow.scrollLeft : 0;
+  const oldCol = el.querySelector(".chip-col");
+  const scroll = oldCol ? oldCol.scrollTop : null;
   if (dealingNow && !isBetting()) el.innerHTML = '<div class="bar-text">Krupier rozdaje karty…</div>';
   else renderBarInner(el, mine, myTurn);
-  const row = el.querySelector(".chips-row");
-  if (row) row.scrollLeft = scroll;
+  const col = el.querySelector(".chip-col");
+  if (!col) return;
+  if (scroll != null) col.scrollTop = scroll;
+  else {
+    // Po rozwinięciu przewijamy do ostatnio używanego żetonu.
+    const cur = col.querySelector('[data-bet="' + activeChip + '"]');
+    if (cur) col.scrollTop = cur.offsetTop - col.clientHeight / 2 + cur.offsetHeight / 2;
+  }
 }
 
 function renderBarInner(el, mine, myTurn) {
@@ -415,19 +426,25 @@ function renderBarInner(el, mine, myTurn) {
     const noMain = betTarget !== "bet" && seat.bet === 0;
     const withBet = mine.filter((i) => S.seats[i].bet > 0 && !S.seats[i].sitOut);
     const allReady = withBet.length > 0 && withBet.every((i) => S.seats[i].ready);
-    const chips = BAR_CHIPS.concat(barMore ? BAR_MORE : []).map((v) => chipBtn(v, noMain || betsMine + v > me.bankroll, "data-bet")).join("") +
-      '<button class="chip more' + (barMore ? " on" : "") + '" data-more aria-label="Więcej żetonów">' + (barMore ? "−" : "+") + "</button>";
+    const off = (v) => noMain || betsMine + v > me.bankroll;
+    // Kolumna rośnie do góry: najmniejsze żetony na dole, przy palcu.
+    const col = pickerOpen
+      ? '<div class="chip-col' + (pickerAnim ? " anim" : "") + '">' + CHIPS.slice().reverse().map((v) => chipBtn(v, off(v), "data-bet")).join("") + "</div>"
+      : "";
+    const picker = '<div class="picker">' + col +
+      chipBtn(activeChip, off(activeChip), "data-bet") +
+      '<button class="pick-toggle' + (pickerOpen ? " on" : "") + '" data-picker aria-label="Wybierz żeton">' + (pickerOpen ? "▼" : "▲") + "</button></div>";
     let readyLabel = "Postaw", readyOn = false;
     if (withBet.length && allReady) readyLabel = "Czekam…";
     else if (withBet.length) { readyLabel = "Gotowe"; readyOn = S.phase === "betting"; }
     const tabs = [["bet", (mine.length > 1 ? "M" + (sel + 1) + " · " : "") + "Zakład"], ["pp", "Pary"], ["t3", "21+3"]].map(([k, label]) =>
-      '<button class="tgt' + (betTarget === k ? " on" : "") + '" data-target="' + k + '" data-seat="' + sel + '"><small>' + label + "</small><b>" + fmt(seat[k]) + "</b></button>"
+      '<button class="tgt' + (betTarget === k ? " on" : "") + '" data-target="' + k + '" data-seat="' + sel + '"><small>' + label + "</small><b>" + short(seat[k]) + "</b></button>"
     ).join("");
     const canRebet = seat.last > 0 && stake < seat.last && betsMine - stake + seat.last <= me.bankroll;
     const canDouble = stake > 0 && betsMine + stake <= me.bankroll;
     el.innerHTML =
       '<div class="tgts">' + tabs + "</div>" +
-      '<div class="chips-row">' + chips + "</div>" +
+      picker + '<div class="bar-gap"></div>' +
       '<button class="btn outline" data-clear="' + sel + '"' + (stake > 0 ? "" : " disabled") + ">Wyczyść</button>" +
       '<button class="btn outline" data-rebet="' + sel + '"' + (canRebet ? "" : " disabled") + ">↺ Powtórz</button>" +
       '<button class="btn outline" data-double="' + sel + '"' + (canDouble ? "" : " disabled") + ">×2</button>" +
@@ -456,16 +473,6 @@ function renderBarInner(el, mine, myTurn) {
   else if (S.phase === "dealer") text = "Krupier odsłania i dobiera karty…";
   else text = "Koniec rundy – za chwilę kolejne zakłady.";
   el.innerHTML = '<div class="bar-text">' + text + "</div>";
-}
-
-function renderDrawer(mine) {
-  const show = mine.length > 0 && isBetting() && me;
-  $("drawerTab").classList.toggle("hidden", !show || drawerOpen);
-  $("drawer").classList.toggle("hidden", !show || !drawerOpen);
-  if (!show) return;
-  const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet + S.seats[i].pp + S.seats[i].t3, 0);
-  $("drawer").innerHTML = '<button class="drawer-close" data-drawer="0">◂ Zwiń</button>' +
-    CHIPS.slice().reverse().map((v) => chipBtn(v, betsMine + v > me.bankroll, "data-bet")).join("");
 }
 
 function statusText() {
@@ -510,7 +517,9 @@ document.addEventListener("click", (e) => {
     const target = document.querySelector('.seat[data-i="' + sel + '"] [data-spot="' + betTarget + '"]');
     if (target) flyBetChip(+d.bet, b, target);
     send({ type: "bet", seat: sel, amount: +d.bet, kind: betTarget });
+    if (activeChip !== +d.bet) { activeChip = +d.bet; render(); }
   }
+  else if (d.picker != null) { pickerOpen = !pickerOpen; pickerAnim = pickerOpen; render(); pickerAnim = false; }
   else if (d.rebet != null) send({ type: "rebet", seat: +d.rebet });
   else if (d.double != null) send({ type: "doubleBet", seat: +d.double });
   else if (d.target != null) { sel = +d.seat; betTarget = d.target; render(); }
@@ -520,18 +529,15 @@ document.addEventListener("click", (e) => {
   else if (d.act != null) send({ type: "action", kind: d.act });
   else if (d.ins != null) send({ type: "insurance", seat: +d.ins, accept: d.accept === "1" });
   else if (d.dep != null) { send({ type: "deposit", amount: +d.dep }); closeModal("mDeposit"); }
-  else if (d.drawer != null) { drawerOpen = d.drawer === "1"; render(); }
-  else if (d.more != null) {
-    barMore = !barMore;
-    render();
-    const row = document.querySelector(".chips-row");
-    if (row && barMore) row.scrollTo({ left: row.scrollWidth, behavior: "smooth" });
-  }
   else if (d.close != null) b.closest(".modal").classList.add("hidden");
   else if (d.select != null) { sel = +d.select; render(); }
 });
 
-$("drawerTab").dataset.drawer = "1";
+// Dotknięcie gdzie indziej zwija kolumnę żetonów.
+document.addEventListener("click", (e) => {
+  // Przełączanie Zakład / Pary / 21+3 (na pasku albo na stole) zostawia kolumnę otwartą.
+  if (pickerOpen && !e.target.closest(".picker, [data-target]")) { pickerOpen = false; render(); }
+}, true);
 
 $("btnDeposit").onclick = () => {
   if (!me) return openModal("mName");
