@@ -240,7 +240,7 @@ input { -webkit-user-select: text; user-select: text; }
 .ring .bg { stroke: rgba(233,205,131,.2); }
 .ring .fg { stroke: var(--gold); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
 .ring.low .fg { stroke: var(--red-soft); }
-.ring span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85em; }
+.ring .ring-sec { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85em; }
 .ap-seat { font-weight: 800; font-size: 0.75em; color: var(--gold); padding: 0 0.2em; }
 .act {
   border: 0; border-radius: 999px; padding: 0.5em 0.95em; font-weight: 800; font-size: 0.82em;
@@ -454,3 +454,15 @@ input { -webkit-user-select: text; user-select: text; }
 .box-net.zero { color: var(--muted); }
 .box-net.fresh { animation: boxNetIn .6s ease-out 1.3s both; }
 @keyframes boxNetIn { from { opacity: 0; transform: translate(-50%, 0.6em) scale(.85); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Minuta na zakłady na środku stołu */
+.bet-panel { gap: 0.6em; padding: 0.4em 0.5em 0.4em 0.45em; }
+.ring.big { width: 2.8em; height: 2.8em; }
+.ring.big .ring-sec { font-size: 1.05em; }
+.bp-info { line-height: 1.15; min-width: 8.5em; }
+.bp-title { font-family: var(--serif); color: var(--gold); font-weight: 700; font-size: 0.95em; }
+.bp-sub { font-size: 0.68em; color: var(--muted); }
+.ready-btn { font-size: 0.95em; padding: 0.6em 1.3em; border-radius: 999px; }
+.ready-btn.done { background: rgba(143,224,172,.15); color: var(--green-soft); border: 0.08em solid var(--green-soft); opacity: 1; }
+.btn.gold.ready-btn:not(:disabled) { animation: readyPulse 1.6s ease-in-out infinite; }
+@keyframes readyPulse { 50% { box-shadow: 0 0 0 0.25em rgba(212,172,79,.25), 0 0 1em rgba(212,172,79,.5); } }

@@ -6,7 +6,7 @@ const MAX_HANDS_PER_SEAT = 4;
 const CHIPS = [2, 5, 10, 15, 25, 50, 100, 200, 300, 500, 1000, 2500, 5000, 10000, 20000, 25000, 50000, 100000, 250000, 500000];
 const MIN_BET = CHIPS[0];
 const MAX_SEATS_PER_PLAYER = 3;
-const BET_MS = 15000;
+const BET_MS = 60000;
 const INSURANCE_MS = 10000;
 const TURN_MS = 20000;
 const AWAY_TURN_MS = 3000;
@@ -439,13 +439,14 @@ export class Table extends DurableObject {
         break;
       }
       case "rebet": {
-        // Zakład z poprzedniej rundy razem z zakładami pobocznymi.
-        if (!seat || (t.phase !== "idle" && t.phase !== "betting")) return;
-        const last = { bet: seat.lastBet || 0, pp: seat.lastPp || 0, t3: seat.lastT3 || 0 };
-        const need = last.bet + last.pp + last.t3;
-        if (last.bet === 0) return;
-        if (this.betsOf(pid) - stakeOf(seat) + need > p.bankroll) return this.error(ws, "Za mało żetonów, żeby powtórzyć zakład.");
-        Object.assign(seat, last, { ready: false, sitOut: false, timeouts: 0 });
+        // Zakłady z poprzedniej rundy (z pobocznymi) naraz na wszystkich miejscach gracza.
+        if (t.phase !== "idle" && t.phase !== "betting") return;
+        const seats = mine.map((i) => t.seats[i]).filter((s) => s.lastBet > 0 && !s.leaving);
+        if (seats.length === 0) return;
+        const last = (s) => ({ bet: s.lastBet, pp: s.lastPp || 0, t3: s.lastT3 || 0 });
+        const need = seats.reduce((a, s) => a + s.lastBet + (s.lastPp || 0) + (s.lastT3 || 0) - stakeOf(s), 0);
+        if (this.betsOf(pid) + need > p.bankroll) return this.error(ws, "Za mało żetonów, żeby powtórzyć zakłady.");
+        for (const s of seats) Object.assign(s, last(s), { ready: false, sitOut: false, timeouts: 0 });
         if (t.phase === "idle") this.startBetting();
         break;
       }
@@ -559,7 +560,7 @@ export class Table extends DurableObject {
     t.phase = "betting";
     t.deadline = Date.now() + BET_MS;
     for (const s of t.seats) if (s) s.ready = false;
-    t.message = "Obstawianie – runda startuje za chwilę.";
+    t.message = "Czas na zakłady – kliknij „Gotowy”, gdy skończysz.";
     this.schedule(t.deadline);
   }
 

@@ -9,7 +9,7 @@ const CHIP_COLORS = {
   5000: "#a0144f", 10000: "#00838f", 20000: "#c2185b", 25000: "#6d4c41", 50000: "#ad1457", 100000: "#111111",
   250000: "#4527a0", 500000: "#b8860b"
 };
-const PHASE_MS = { betting: 15000, insurance: 10000, playing: 20000, result: 5000 };
+const PHASE_MS = { betting: 60000, insurance: 10000, playing: 20000, result: 5000 };
 const PING_MS = 20000;
 const MAX_SEATS = 3;
 const TOKEN_KEY = "bj_token";
@@ -230,7 +230,7 @@ function render() {
 
   const myTurn = S.phase === "playing" && S.turn && mine.includes(S.turn.seat);
   $("message").textContent = S.message || "";
-  $("center").classList.toggle("hidden", myTurn);
+  $("center").classList.toggle("hidden", myTurn || S.phase === "betting");
 
   $("seats").innerHTML = S.seats.map((s, i) => seatHtml(s, i, mine)).join("");
 
@@ -242,6 +242,7 @@ function render() {
     dealTimer = setTimeout(render, busy + 30);
   }
   renderActionPanel(myTurn && busy <= 0);
+  renderBetPanel(mine);
   renderBar(mine, myTurn, busy > 0);
   animateDeal();
   updateTimers();
@@ -384,14 +385,40 @@ function renderActionPanel(myTurn) {
   const label = "M" + (S.turn.seat + 1) + (t.hands.length > 1 ? "·" + (S.turn.hand + 1) : "");
   el.classList.remove("hidden");
   el.innerHTML =
-    '<div class="ring" id="turnRing"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15"/>' +
-    '<circle class="fg" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg><span id="turnSec"></span></div>' +
+    ringHtml(PHASE_MS.playing, "") +
     '<span class="ap-seat">' + label + "</span>" +
     '<button class="act hit" data-act="hit">Dobierz</button>' +
     '<button class="act stand" data-act="stand">Zostań</button>' +
     '<button class="act double" data-act="double"' + (a.double ? "" : " disabled") + ">Podwój</button>" +
     '<button class="act split" data-act="split"' + (a.split ? "" : " disabled") + ">Rozdziel</button>" +
     '<button class="act surrender" data-act="surrender"' + (a.surrender ? "" : " disabled") + ">Poddaj</button>";
+}
+
+// Kółko z odliczaniem do S.deadline; total – pełny czas w ms (odświeża je updateTimers).
+function ringHtml(total, cls) {
+  return '<div class="ring ' + cls + '" data-total="' + total + '"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15"/>' +
+    '<circle class="fg" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg><span class="ring-sec"></span></div>';
+}
+
+// Minuta na zakłady: licznik i „Gotowy” na środku stołu. Gdy wszyscy z zakładami
+// są gotowi, runda startuje od razu; po minucie rozdaje się sama.
+function renderBetPanel(mine) {
+  const el = $("betPanel");
+  if (S.phase !== "betting") { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  const playing = S.seats.filter((s) => s && s.bet > 0 && !s.sitOut && !s.away);
+  const ready = playing.filter((s) => s.ready).length;
+  const withBet = mine.filter((i) => S.seats[i].bet > 0 && !S.seats[i].sitOut);
+  const meReady = withBet.length > 0 && withBet.every((i) => S.seats[i].ready);
+  let btn = "";
+  if (me && mine.length) {
+    if (meReady) btn = '<button class="btn ready-btn done" disabled>✓ Gotowy</button>';
+    else btn = '<button class="btn gold ready-btn" data-ready' + (withBet.length ? "" : " disabled") + ">" + (withBet.length ? "Gotowy" : "Postaw zakład") + "</button>";
+  }
+  const sub = meReady && ready < playing.length ? "Czekamy na pozostałych · gotowi " + ready + "/" + playing.length
+    : playing.length ? "Gotowi: " + ready + "/" + playing.length : "Postaw zakład i kliknij Gotowy";
+  el.classList.remove("hidden");
+  el.innerHTML = ringHtml(PHASE_MS.betting, "big") +
+    '<div class="bp-info"><div class="bp-title">Czas na zakłady</div><div class="bp-sub">' + sub + "</div></div>" + btn;
 }
 
 function renderBar(mine, myTurn, dealingNow) {
@@ -424,8 +451,6 @@ function renderBarInner(el, mine, myTurn) {
     const stake = seat.bet + seat.pp + seat.t3;
     const betsMine = mine.reduce((sum, i) => sum + S.seats[i].bet + S.seats[i].pp + S.seats[i].t3, 0);
     const noMain = betTarget !== "bet" && seat.bet === 0;
-    const withBet = mine.filter((i) => S.seats[i].bet > 0 && !S.seats[i].sitOut);
-    const allReady = withBet.length > 0 && withBet.every((i) => S.seats[i].ready);
     const off = (v) => noMain || betsMine + v > me.bankroll;
     // Kolumna rośnie do góry: najmniejsze żetony na dole, przy palcu.
     const col = pickerOpen
@@ -434,22 +459,21 @@ function renderBarInner(el, mine, myTurn) {
     const picker = '<div class="picker">' + col +
       chipBtn(activeChip, off(activeChip), "data-bet") +
       '<button class="pick-toggle' + (pickerOpen ? " on" : "") + '" data-picker aria-label="Wybierz żeton">' + (pickerOpen ? "▼" : "▲") + "</button></div>";
-    let readyLabel = "Postaw", readyOn = false;
-    if (withBet.length && allReady) readyLabel = "Czekam…";
-    else if (withBet.length) { readyLabel = "Gotowe"; readyOn = S.phase === "betting"; }
     const tabs = [["bet", (mine.length > 1 ? "M" + (sel + 1) + " · " : "") + "Zakład"], ["pp", "Pary"], ["t3", "21+3"]].map(([k, label]) =>
       '<button class="tgt' + (betTarget === k ? " on" : "") + '" data-target="' + k + '" data-seat="' + sel + '"><small>' + label + "</small><b>" + short(seat[k]) + "</b></button>"
     ).join("");
-    const canRebet = seat.last > 0 && stake < seat.last && betsMine - stake + seat.last <= me.bankroll;
+    // Powtórz działa na wszystkich moich miejscach naraz.
+    const toRepeat = mine.map((i) => S.seats[i]).filter((s) => s.last > 0);
+    const extra = toRepeat.reduce((a, s) => a + s.last - (s.bet + s.pp + s.t3), 0);
+    const canRebet = toRepeat.some((s) => s.bet + s.pp + s.t3 < s.last) && betsMine + extra <= me.bankroll;
     const canDouble = stake > 0 && betsMine + stake <= me.bankroll;
     el.innerHTML =
       '<div class="tgts">' + tabs + "</div>" +
       picker + '<div class="bar-gap"></div>' +
       '<button class="btn outline" data-clear="' + sel + '"' + (stake > 0 ? "" : " disabled") + ">Wyczyść</button>" +
-      '<button class="btn outline" data-rebet="' + sel + '"' + (canRebet ? "" : " disabled") + ">↺ Powtórz</button>" +
+      '<button class="btn outline" data-rebet' + (canRebet ? "" : " disabled") + ">↺ Powtórz" + (toRepeat.length > 1 ? " wszystkie" : "") + "</button>" +
       '<button class="btn outline" data-double="' + sel + '"' + (canDouble ? "" : " disabled") + ">×2</button>" +
-      '<button class="btn outline" data-sitout="' + sel + '">' + (seat.sitOut ? "Wracam" : "Pauza") + "</button>" +
-      '<button class="btn gold" data-ready' + (readyOn ? "" : " disabled") + ">" + readyLabel + "</button>";
+      '<button class="btn outline" data-sitout="' + sel + '">' + (seat.sitOut ? "Wracam" : "Pauza") + "</button>";
     return;
   }
 
@@ -493,13 +517,14 @@ function statusText() {
 
 function updateTimers() {
   $("status").innerHTML = statusText();
-  const ring = $("turnRing");
-  if (!ring || !S || !S.deadline) return;
+  if (!S || !S.deadline) return;
   const left = Math.max(0, S.deadline - (Date.now() + clockOffset));
-  const frac = Math.min(1, left / PHASE_MS.playing);
-  ring.querySelector(".fg").setAttribute("stroke-dashoffset", (94.25 * (1 - frac)).toFixed(1));
-  ring.classList.toggle("low", left < 5000);
-  $("turnSec").textContent = Math.ceil(left / 1000);
+  for (const ring of document.querySelectorAll(".ring[data-total]")) {
+    const frac = Math.min(1, left / +ring.dataset.total);
+    ring.querySelector(".fg").setAttribute("stroke-dashoffset", (94.25 * (1 - frac)).toFixed(1));
+    ring.classList.toggle("low", left < 10000);
+    ring.querySelector(".ring-sec").textContent = Math.ceil(left / 1000);
+  }
 }
 setInterval(updateTimers, 250);
 
@@ -520,7 +545,7 @@ document.addEventListener("click", (e) => {
     if (activeChip !== +d.bet) { activeChip = +d.bet; render(); }
   }
   else if (d.picker != null) { pickerOpen = !pickerOpen; pickerAnim = pickerOpen; render(); pickerAnim = false; }
-  else if (d.rebet != null) send({ type: "rebet", seat: +d.rebet });
+  else if (d.rebet != null) send({ type: "rebet" });
   else if (d.double != null) send({ type: "doubleBet", seat: +d.double });
   else if (d.target != null) { sel = +d.seat; betTarget = d.target; render(); }
   else if (d.clear != null) send({ type: "clearBet", seat: +d.clear });
