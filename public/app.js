@@ -49,6 +49,10 @@ const dealing = new Map();  // klucz karty -> czas, w którym ma wylecieć z but
 const lastStake = [];       // ostatnia stawka na miejscu – żeby żetony „spadały” tylko przy zmianie
 const DEAL_STEP_MS = 190;
 const DEAL_MS = 600;
+const SHUFFLE_MS = 1400;
+let shuffleUntil = 0;       // przy nowym bucie karty lecą dopiero po tasowaniu
+let lastShoeLeft = null;    // ile kart było w bucie przy poprzednim stanie
+let pageVer = null;         // wersja serwera, z którą otwarto stronę
 let dealBusyUntil = 0;
 let dealTimer = null;
 
@@ -132,6 +136,11 @@ document.addEventListener("visibilitychange", () => {
 
 function onMessage(msg) {
   switch (msg.type) {
+    case "version":
+      // Po wdrożeniu serwer ma nową wersję, a ta strona jest jeszcze stara.
+      if (pageVer === null) pageVer = msg.ver;
+      else if (msg.ver !== pageVer) $("update").classList.remove("hidden");
+      break;
     case "needName":
       meId = null;
       openModal("mName");
@@ -234,6 +243,7 @@ function render() {
 
   $("seats").innerHTML = S.seats.map((s, i) => seatHtml(s, i, mine)).join("");
 
+  renderShoe();
   registerDeal();
   // Przyciski ruchu i ubezpieczenia pokazujemy dopiero, gdy karty dolecą na stół.
   const busy = dealBusyUntil - Date.now();
@@ -252,17 +262,43 @@ function render() {
 // Karty wylatują po kolei z buta krupiera i odwracają się w locie.
 // Stan przychodzi często, więc karta w trakcie lotu po przerysowaniu dostaje ujemne opóźnienie
 // i leci dalej od miejsca, w którym była.
+// Wskaźnik buta: ile kart zostało i gdzie leży karta cięcia. Nowy but = tasowanie.
+function renderShoe() {
+  const sh = S.shoe;
+  if (!sh) return;
+  const now = Date.now();
+  if (lastShoeLeft !== null && sh.left > lastShoeLeft) {
+    shuffleUntil = now + SHUFFLE_MS;
+    const shoe = $("shoe");
+    shoe.classList.remove("shuffling");
+    void shoe.offsetWidth;
+    shoe.classList.add("shuffling");
+    setTimeout(() => { shoe.classList.remove("shuffling"); render(); }, SHUFFLE_MS);
+  }
+  lastShoeLeft = sh.left;
+  const m = $("shoeMeter");
+  m.classList.remove("hidden");
+  m.querySelector(".sm-fill").style.width = (sh.left / sh.total * 100).toFixed(1) + "%";
+  m.querySelector(".sm-cut").style.left = (sh.cut / sh.total * 100).toFixed(1) + "%";
+  const label = m.querySelector(".sm-label");
+  m.classList.toggle("low", sh.left < sh.cut);
+  if (now < shuffleUntil) label.textContent = "Tasowanie…";
+  else if (sh.left < sh.cut) label.textContent = "Nowy but w następnej rundzie";
+  else label.textContent = Math.round(sh.left / sh.total * 100) + "% · " + sh.left + " kart";
+}
+
 function registerDeal() {
   const now = Date.now();
   if (!seenCards) {
     seenCards = new Set([...document.querySelectorAll(".card[data-k]")].map((el) => el.dataset.k));
     return;
   }
+  const base = Math.max(now, shuffleUntil);
   newCards.sort((a, b) => a[1] - b[1]);
   newCards.forEach(([key], n) => {
     seenCards.add(key);
-    dealing.set(key, now + n * DEAL_STEP_MS);
-    dealBusyUntil = Math.max(dealBusyUntil, now + n * DEAL_STEP_MS + DEAL_MS);
+    dealing.set(key, base + n * DEAL_STEP_MS);
+    dealBusyUntil = Math.max(dealBusyUntil, base + n * DEAL_STEP_MS + DEAL_MS);
   });
 }
 
@@ -563,6 +599,8 @@ document.addEventListener("click", (e) => {
   // Przełączanie Zakład / Pary / 21+3 (na pasku albo na stole) zostawia kolumnę otwartą.
   if (pickerOpen && !e.target.closest(".picker, [data-target]")) { pickerOpen = false; render(); }
 }, true);
+
+$("btnReload").onclick = () => location.reload();
 
 $("btnDeposit").onclick = () => {
   if (!me) return openModal("mName");

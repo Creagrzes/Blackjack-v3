@@ -11,5 +11,6 @@
     "bindings": [{ "name": "TABLE", "class_name": "Table" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Table"] }],
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "observability": { "enabled": true }
 }

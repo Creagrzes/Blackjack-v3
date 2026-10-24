@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { newShoe, evaluate, rankValue, perfectPairs, twentyOnePlusThree } from "./game.js";
+import { newShoe, evaluate, rankValue, perfectPairs, twentyOnePlusThree, NUM_DECKS } from "./game.js";
 
 const SEATS = 6;
 const MAX_HANDS_PER_SEAT = 4;
@@ -319,6 +319,9 @@ export class Table extends DurableObject {
     const t = this.t;
 
     if (msg.type === "hello") {
+      // Wersja wdrożenia – telefon z inną wersją pokaże pasek „odśwież”.
+      const meta = this.env.CF_VERSION_METADATA;
+      this.send(ws, { type: "version", ver: meta && meta.id ? meta.id : "dev" });
       const known = this.byToken.get(String(msg.token || ""));
       if (known) {
         ws.serializeAttachment({ pid: known, since: Date.now() });
@@ -1160,6 +1163,8 @@ export class Table extends DurableObject {
       deadline: t.deadline,
       now: Date.now(),
       roundNo: t.roundNo,
+      // Ile kart zostało w bucie i gdzie leży karta cięcia – do wskaźnika buta.
+      shoe: { left: t.shoe.length, total: 52 * NUM_DECKS, cut: CUT_CARD },
       message: t.message,
       house: t.house,
       turn: t.turn,

@@ -7,8 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Blackjack">
   <title>Blackjack 21</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🂡</text></svg>">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap">
@@ -28,10 +31,12 @@
     </header>
 
     <div id="conn" class="conn hidden">Łączenie…</div>
+    <div id="update" class="update hidden">Jest nowa wersja gry <button id="btnReload" class="btn gold">Odśwież</button></div>
 
     <main class="felt-wrap">
       <div class="felt">
         <div id="shoe" class="shoe"><i></i><i></i><i></i></div>
+        <div id="shoeMeter" class="shoe-meter hidden"><div class="sm-bar"><div class="sm-fill"></div><div class="sm-cut"></div></div><div class="sm-label"></div></div>
         <section class="dealer">
           <div class="dealer-head">Krupier <span id="dealerTotal" class="tot">–</span><span id="dealerRes"></span></div>
           <div id="dealerCards" class="cards dealer-cards"></div>

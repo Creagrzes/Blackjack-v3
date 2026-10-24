@@ -28,6 +28,7 @@ html, body {
   -webkit-user-select: none; user-select: none;
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
+  overscroll-behavior: none;
 }
 button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
 button:disabled { cursor: default; }
@@ -180,6 +181,7 @@ input { -webkit-user-select: text; user-select: text; }
 .hand-info .tot { font-size: 0.85em; }
 .hands.multi .hand-info { font-size: 0.65em; }
 .hand.dealing .hand-info { visibility: hidden; }
+.hand.dealing { border-color: transparent; background: none; }
 .dbl { font-size: 0.65em; color: var(--gold); font-weight: 800; }
 
 .spot {
@@ -355,7 +357,8 @@ input { -webkit-user-select: text; user-select: text; }
 .box p { margin: 0.2em 0 0.5em; font-size: 0.85em; }
 .box-head { display: flex; align-items: center; justify-content: space-between; }
 .box input {
-  width: 100%; font: inherit; font-size: 1em; padding: 0.55em 0.75em;
+  /* iPhone przybliża ekran przy polach mniejszych niż 16 px */
+  width: 100%; font: inherit; font-size: max(16px, 1em); padding: 0.55em 0.75em;
   border-radius: 0.7em; border: 1px solid var(--line); background: #0f0d08; color: var(--text);
 }
 .quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; margin-bottom: 0.5em; }
@@ -466,3 +469,30 @@ input { -webkit-user-select: text; user-select: text; }
 .ready-btn.done { background: rgba(143,224,172,.15); color: var(--green-soft); border: 0.08em solid var(--green-soft); opacity: 1; }
 .btn.gold.ready-btn:not(:disabled) { animation: readyPulse 1.6s ease-in-out infinite; }
 @keyframes readyPulse { 50% { box-shadow: 0 0 0 0.25em rgba(212,172,79,.25), 0 0 1em rgba(212,172,79,.5); } }
+
+/* ---------- Nowa wersja gry ---------- */
+.update {
+  position: absolute; top: 0.4em; left: 50%; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 0.7em; white-space: nowrap;
+  background: rgba(14,12,7,.95); border: 1px solid var(--gold-deep); border-radius: 999px;
+  padding: 0.3em 0.35em 0.3em 1em; font-size: 0.85em; color: var(--gold);
+  box-shadow: 0 0.3em 1em rgba(0,0,0,.5);
+}
+.update .btn { padding: 0.4em 1em; border-radius: 999px; }
+
+/* ---------- Wskaźnik buta ---------- */
+.shoe-meter { position: absolute; right: calc(7% - 0.9em); top: 4.1em; width: 4.1em; z-index: 1; text-align: center; }
+.sm-bar { position: relative; height: 0.32em; border-radius: 999px; background: rgba(0,0,0,.45); overflow: visible; }
+.sm-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); transition: width .5s ease; }
+.sm-cut { position: absolute; top: -0.18em; bottom: -0.18em; width: 0.14em; margin-left: -0.07em; background: #e0453a; border-radius: 0.1em; }
+.sm-label { margin-top: 0.25em; font-size: 0.48em; color: rgba(243,236,217,.6); line-height: 1.2; }
+.shoe-meter.low .sm-label { color: var(--red-soft); }
+.shoe-meter.low .sm-fill { background: #b3261e; }
+
+/* Tasowanie: talie rozjeżdżają się na boki i wracają, dwa razy */
+.shoe.shuffling i:nth-child(1) { animation: riffleL .7s ease-in-out 2; }
+.shoe.shuffling i:nth-child(2) { animation: riffleR .7s ease-in-out 2; }
+.shoe.shuffling i:nth-child(3) { animation: riffleUp .7s ease-in-out 2; }
+@keyframes riffleL { 50% { transform: translate(-1.6em, 0.3em) rotate(-14deg); } }
+@keyframes riffleR { 50% { transform: translate(1.2em, 0.3em) rotate(14deg); } }
+@keyframes riffleUp { 50% { transform: translateY(-0.5em) scale(1.06); } }
