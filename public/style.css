@@ -168,7 +168,8 @@ input { -webkit-user-select: text; user-select: text; }
 /* ---------- Miejsca ---------- */
 .seats { position: absolute; inset: 0; pointer-events: none; }
 .seat {
-  position: absolute; width: 15.4%; transform: translateX(-50%);
+  /* miejsca co 15% szerokości stołu – szerokość mniejsza, żeby zawsze był odstęp */
+  position: absolute; width: 13.6%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   pointer-events: auto;
 }
@@ -225,9 +226,11 @@ input { -webkit-user-select: text; user-select: text; }
 .plate .tags .off { color: var(--red-soft); }
 .plate .tags .ok { color: var(--green-soft); }
 .leave {
-  position: absolute; right: -0.55em; top: -0.95em; z-index: 2;
-  background: var(--red); color: #fff; border: 0; border-radius: 999px;
-  font-size: 0.6em; font-weight: 800; padding: 0.3em 0.7em; box-shadow: 0 0.1em 0.3em rgba(0,0,0,.5);
+  /* mały ✕ w rogu plakietki – nie zasłania kwoty zakładu na wąskim stole */
+  position: absolute; right: -0.45em; top: -0.45em; z-index: 2;
+  width: 1.25em; height: 1.25em; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--red); color: #fff; border: 0.08em solid rgba(255,255,255,.7); border-radius: 50%;
+  font-size: 0.85em; font-weight: 900; line-height: 1; box-shadow: 0 0.1em 0.3em rgba(0,0,0,.5);
 }
 .plate.empty {
   background: transparent; border: 0.1em dashed rgba(233,205,131,.3); color: rgba(233,205,131,.45);

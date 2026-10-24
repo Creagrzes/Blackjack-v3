@@ -414,7 +414,7 @@ function seatHtml(s, i, mine) {
     (hands ? '<div class="hands' + (multi ? " multi" : "") + '">' + hands + "</div>" : "") +
     spot +
     '<div class="' + plateCls + '"' + (isMine ? ' data-select="' + i + '"' : "") + ">" +
-    (isMine ? '<button class="leave" data-leave="' + i + '">Wstań</button>' : "") +
+    (isMine ? '<button class="leave" data-leave="' + i + '" aria-label="Wstań od stołu" title="Wstań">✕</button>' : "") +
     '<div class="nm">M' + (i + 1) + " · " + esc(s.name) + "</div>" +
     '<div class="bk">' + fmt(s.bankroll) + "</div>" +
     (tags.length ? '<div class="tags">' + tags.join(" · ") + "</div>" : "") +
