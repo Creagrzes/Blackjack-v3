@@ -17,7 +17,7 @@ const STALE_MS = 45000;
 const HOUSEKEEPING_MS = 15000;
 const AFK_TIMEOUTS = 2;
 const CUT_CARD = 78;
-const MAX_DEPOSIT = 10000000;
+const MAX_DEPOSIT = 100000000;
 const LOG_SIZE = 60;
 const ERRLOG_SIZE = 200;
 const RECENT_SIZE = 40;
@@ -1107,6 +1107,12 @@ export class Table extends DurableObject {
   }
 
   commit() {
+    // Nikt już nie ma zakładu (wstali, wyczyścili, pauza) – bez sensu odliczać minutę.
+    if (this.t.phase === "betting" && !this.t.seats.some((s) => s && s.bet > 0 && !s.sitOut && !s.leaving)) {
+      this.t.phase = "idle";
+      this.t.deadline = 0;
+      this.t.message = "Postaw zakład, aby zacząć rundę.";
+    }
     if (this.t.phase === "idle" && this.t.seats.some((s) => s)) {
       let at = Date.now() + HOUSEKEEPING_MS;
       for (const s of this.t.seats) if (s && s.awayAt) at = Math.min(at, s.awayAt + SEAT_HOLD_MS + 500);

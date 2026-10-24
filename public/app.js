@@ -431,9 +431,13 @@ function renderActionPanel(myTurn) {
 }
 
 // Kółko z odliczaniem do S.deadline; total – pełny czas w ms (odświeża je updateTimers).
+// Kółko rysujemy od razu w bieżącym położeniu – inaczej po każdym odświeżeniu stołu
+// startowałoby jako pełne i „cofało się”.
 function ringHtml(total, cls) {
-  return '<div class="ring ' + cls + '" data-total="' + total + '"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15"/>' +
-    '<circle class="fg" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="0"/></svg><span class="ring-sec"></span></div>';
+  const left = S.deadline ? Math.max(0, S.deadline - (Date.now() + clockOffset)) : total;
+  const offset = (94.25 * (1 - Math.min(1, left / total))).toFixed(1);
+  return '<div class="ring ' + cls + (left < 10000 ? " low" : "") + '" data-total="' + total + '"><svg viewBox="0 0 36 36"><circle class="bg" cx="18" cy="18" r="15"/>' +
+    '<circle class="fg" cx="18" cy="18" r="15" stroke-dasharray="94.25" stroke-dashoffset="' + offset + '"/></svg><span class="ring-sec">' + Math.ceil(left / 1000) + "</span></div>";
 }
 
 // Minuta na zakłady: licznik i „Gotowy” na środku stołu. Gdy wszyscy z zakładami
