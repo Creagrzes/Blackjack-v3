@@ -73,8 +73,16 @@ function fit() {
   app.style.height = H + "px";
   app.style.transform = portrait ? "translate(" + w + "px,0) rotate(90deg)" : "none";
   app.classList.toggle("rotated", portrait);
-  // Projekt jest liczony dla ok. 54 × 25 em (telefon poziomo).
-  const size = Math.max(10, Math.min(H / 25, W / 54, 24));
+  // Projekt jest liczony dla ok. 54 × 25 em (telefon poziomo). Marginesy na wcięcia ekranu
+  // (pasek z godziną, kreska „home”) zabierają miejsce, więc liczymy z tego, co zostaje.
+  // Marginesy częściowo zależą od em, dlatego liczymy dwa razy.
+  let size = Math.max(10, Math.min(H / 25, W / 54, 24));
+  for (let i = 0; i < 2; i++) {
+    app.style.fontSize = size + "px";
+    const cs = getComputedStyle(app);
+    const inner = W - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    size = Math.max(10, Math.min(H / 25, inner / 53, 24));
+  }
   app.style.fontSize = size + "px";
 }
 window.addEventListener("resize", fit);
@@ -511,7 +519,7 @@ function renderBarInner(el, mine, myTurn) {
       '<div class="tgts">' + tabs + "</div>" +
       picker + '<div class="bar-gap"></div>' +
       '<button class="btn outline" data-clear="' + sel + '"' + (stake > 0 ? "" : " disabled") + ">Wyczyść</button>" +
-      '<button class="btn outline" data-rebet' + (canRebet ? "" : " disabled") + ">↺ Powtórz" + (toRepeat.length > 1 ? " wszystkie" : "") + "</button>" +
+      '<button class="btn outline" data-rebet' + (canRebet ? "" : " disabled") + ">↺ Powtórz" + (toRepeat.length > 1 ? ' <small class="cnt">×' + toRepeat.length + "</small>" : "") + "</button>" +
       '<button class="btn outline" data-double="' + sel + '"' + (canDouble ? "" : " disabled") + ">×2</button>" +
       '<button class="btn outline" data-sitout="' + sel + '">' + (seat.sitOut ? "Wracam" : "Pauza") + "</button>";
     return;

@@ -44,8 +44,10 @@ input { -webkit-user-select: text; user-select: text; }
   padding: 0 max(0.6em, env(safe-area-inset-right)) 0.4em max(0.6em, env(safe-area-inset-left));
   overflow: hidden;
 }
+/* Obrócony telefon: po lewej pasek z godziną – iOS rozmywa treść trochę dalej niż sam pasek,
+   więc odsuwamy się z zapasem; po prawej tylko cienka kreska „home”. */
 #app.rotated {
-  padding: 0 max(0.6em, env(safe-area-inset-bottom)) 0.4em max(0.6em, env(safe-area-inset-top));
+  padding: 0 max(0.6em, calc(env(safe-area-inset-bottom) * 0.6)) 0.4em max(0.6em, calc(env(safe-area-inset-top) + 0.9em));
 }
 
 /* ---------- Górny pasek ---------- */
@@ -56,7 +58,11 @@ input { -webkit-user-select: text; user-select: text; }
 .brand { font-family: var(--serif); color: var(--gold); font-size: 1.1em; font-weight: 700; white-space: nowrap; }
 .status { font-size: 0.85em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; flex: 1; }
 .status b { color: var(--gold); }
-.top-right { display: flex; align-items: center; gap: 0.35em; }
+.top-right { display: flex; align-items: center; gap: 0.35em; min-width: 0; flex-shrink: 1; }
+.me-pill { display: flex; gap: 0.35em; min-width: 0; }
+#meName { overflow: hidden; text-overflow: ellipsis; max-width: 7em; }
+.top .pill { flex: none; }
+.status { min-width: 0; }
 .me-pill, .pill {
   border: 1px solid rgba(233,205,131,.55); border-radius: 999px;
   padding: 0.25em 0.75em; font-size: 0.8em; white-space: nowrap; background: rgba(0,0,0,.18);
@@ -419,6 +425,7 @@ input { -webkit-user-select: text; user-select: text; }
 .tgt b { font-family: var(--serif); font-size: 0.85em; color: var(--gold); font-variant-numeric: tabular-nums; }
 .tgt.on { border-color: var(--gold); background: rgba(233,205,131,.12); }
 .bar .btn { padding: 0.55em 0.65em; }
+.bar .cnt { font-size: 0.75em; opacity: .75; }
 
 /* ---------- Lecące żetony ---------- */
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
